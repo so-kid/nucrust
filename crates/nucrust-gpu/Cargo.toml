@@ -1,0 +1,17 @@
+[package]
+name = "nucrust-gpu"
+description = "GPU backend (CUDA) for nucrust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nucrust-core = { workspace = true }
+nucrust-special = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[features]
+default = []

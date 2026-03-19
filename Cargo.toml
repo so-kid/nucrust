@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nucrust-core",
+    "crates/nucrust-special",
+    "crates/nucrust-data",
+    "crates/nucrust-optical",
+    "crates/nucrust-hf",
+    "crates/nucrust-rmatrix",
+    "crates/nucrust-astro",
+    "crates/nucrust-gpu",
+    # "crates/nucrust-python",  # Phase 4
+    "crates/nucrust",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nui/nucrust"
+
+[workspace.dependencies]
+# Internal crates
+nucrust-core = { path = "crates/nucrust-core" }
+nucrust-special = { path = "crates/nucrust-special" }
+nucrust-data = { path = "crates/nucrust-data" }
+nucrust-optical = { path = "crates/nucrust-optical" }
+nucrust-hf = { path = "crates/nucrust-hf" }
+nucrust-rmatrix = { path = "crates/nucrust-rmatrix" }
+nucrust-astro = { path = "crates/nucrust-astro" }
+nucrust-gpu = { path = "crates/nucrust-gpu" }
+
+# Math / numerics
+num-complex = "0.4"
+faer = "0.20"
+
+# Parallelism
+rayon = "1.10"
+
+# SIMD
+wide = "0.7"
+
+# Serialization / parsing
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Error handling
+thiserror = "2"
+
+# Testing
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+approx = "0.5"
+
+# CLI (Phase 4)
+clap = { version = "4", features = ["derive"] }

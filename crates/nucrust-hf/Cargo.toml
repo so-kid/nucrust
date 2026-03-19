@@ -1,0 +1,18 @@
+[package]
+name = "nucrust-hf"
+description = "Hauser-Feshbach statistical model for nucrust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nucrust-core = { workspace = true }
+nucrust-optical = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+proptest = { workspace = true }
+
+[features]
+default = []

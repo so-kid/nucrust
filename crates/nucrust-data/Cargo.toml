@@ -1,0 +1,19 @@
+[package]
+name = "nucrust-data"
+description = "RIPL-3 and REACLIB data parsers for nucrust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nucrust-core = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+faer = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[features]
+default = []

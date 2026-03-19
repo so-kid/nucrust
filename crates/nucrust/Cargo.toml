@@ -1,0 +1,19 @@
+[package]
+name = "nucrust"
+description = "GPU-accelerated nuclear reaction rate calculation framework"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+nucrust-core = { workspace = true }
+nucrust-special = { workspace = true }
+nucrust-data = { workspace = true }
+nucrust-optical = { workspace = true }
+nucrust-hf = { workspace = true }
+nucrust-rmatrix = { workspace = true }
+nucrust-astro = { workspace = true }
+
+[features]
+default = []

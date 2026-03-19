@@ -1,0 +1,30 @@
+pub mod backend;
+pub mod channel;
+pub mod collision_matrix;
+pub mod cross_section;
+pub mod energy;
+pub mod error;
+pub mod nuclide;
+pub mod projectile;
+pub mod reaction_rate;
+pub mod spin;
+pub mod spline;
+pub mod traits;
+pub mod transmission;
+pub mod units;
+
+#[cfg(feature = "parallel")]
+pub use backend::CpuBackend;
+pub use backend::{ComputeBackend, GsfModelParams, NldModelParams, ToDeviceParams};
+pub use channel::Channel;
+pub use collision_matrix::CollisionMatrix;
+pub use cross_section::{CrossSection, PartialCrossSection};
+pub use energy::EnergyGrid;
+pub use error::CoreError;
+pub use nuclide::Nuclide;
+pub use projectile::Projectile;
+pub use reaction_rate::ReactionRate;
+pub use spin::{Parity, SpinParity};
+pub use spline::CubicSpline;
+pub use traits::{GammaStrength, LevelDensity, Multipole, OpticalPotential};
+pub use transmission::TransmissionCoeffs;
