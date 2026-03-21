@@ -10,3 +10,8 @@ Cargo.lock
 
 # OS
 .DS_Store
+
+# Python (scripts/)
+scripts/.venv/
+scripts/__pycache__/
+*.pyc

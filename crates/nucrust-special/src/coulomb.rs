@@ -814,12 +814,22 @@ mod tests {
             assert!(
                 f_rel < 1e-8,
                 "F mismatch at eta={}, rho={}, l={}: direct={:.10e}, from0={:.10e}, rel={:.2e}",
-                eta, rho, l, direct.f[0], from_zero.f[idx], f_rel
+                eta,
+                rho,
+                l,
+                direct.f[0],
+                from_zero.f[idx],
+                f_rel
             );
             assert!(
                 g_rel < 1e-8,
                 "G mismatch at eta={}, rho={}, l={}: direct={:.10e}, from0={:.10e}, rel={:.2e}",
-                eta, rho, l, direct.g[0], from_zero.g[idx], g_rel
+                eta,
+                rho,
+                l,
+                direct.g[0],
+                from_zero.g[idx],
+                g_rel
             );
 
             // Also check Wronskian for direct computation
@@ -827,7 +837,10 @@ mod tests {
             assert!(
                 (w - 1.0).abs() < 1e-8,
                 "Wronskian bad at eta={}, rho={}, l={}: W={:.10e}",
-                eta, rho, l, w
+                eta,
+                rho,
+                l,
+                w
             );
         }
     }
@@ -836,12 +849,7 @@ mod tests {
     fn lmin_gt0_multi_l_consistency() {
         // coulomb_wave(eta, rho, l_min=2, n_l=3) should match
         // coulomb_wave(eta, rho, 0, 5)[2..5]
-        let cases = vec![
-            (0.0, 5.0),
-            (1.0, 5.0),
-            (2.0, 8.0),
-            (5.0, 12.0),
-        ];
+        let cases = vec![(0.0, 5.0), (1.0, 5.0), (2.0, 8.0), (5.0, 12.0)];
 
         for (eta, rho) in cases {
             let from_lmin = coulomb_wave(eta, rho, 2, 3).unwrap();
@@ -857,7 +865,10 @@ mod tests {
                 assert!(
                     f_rel < 1e-10,
                     "F mismatch at eta={}, rho={}, l={}: rel={:.2e}",
-                    eta, rho, i + 2, f_rel
+                    eta,
+                    rho,
+                    i + 2,
+                    f_rel
                 );
             }
             check_wronskian(&from_lmin, 1e-8);

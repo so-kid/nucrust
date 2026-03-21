@@ -235,13 +235,12 @@ pub(crate) fn compute_channel_data(
 
         // Compute Coulomb wave functions at channel radius
         let (penetrability, shift, omega) = if rho > 1e-10 {
-            let cw = coulomb_wave(eta, rho, ch.l, 1).map_err(|_e| {
-                CoreError::ConvergenceFailure {
+            let cw =
+                coulomb_wave(eta, rho, ch.l, 1).map_err(|_e| CoreError::ConvergenceFailure {
                     algorithm: "coulomb_wave",
                     iterations: 0,
                     residual: 0.0,
-                }
-            })?;
+                })?;
 
             let f = cw.f[0];
             let g = cw.g[0];

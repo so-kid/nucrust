@@ -1,0 +1,28 @@
+# REACLIB v2.0 sample entries for testing
+# Source: JINA REACLIB v2.2 (subset)
+# Format: 3-line entries (chapter + nuclides + label + flag + Q, 4 coefficients, 3 coefficients)
+#
+# Chapter 4 (2->1): p + fe56 -> co57 + gamma (radiative capture)
+4    p    fe56 co57                        rath n    5.84700E+00
+ 1.65500e+01 0.00000e+00-1.98600e+01-1.06200e+00
+ 1.28400e-01-9.82000e-03-5.43200e-01
+# Chapter 5 (2->2): n + fe56 -> fe57 + gamma (neutron capture)
+5    n    fe56 fe57 g                      ka02 n    7.64600e+00
+ 1.81200e+01 0.00000e+00-2.34400e+01-1.22200e+00
+ 1.47600e-01-1.11600e-02-6.67000e-01
+# Chapter 5 (2->2): p + fe56 -> co56 + n (charge exchange)
+5    p    fe56 co56 n                      cf88 n   -2.95800e+00
+-6.10800e+01 0.00000e+00 2.78400e+01 3.45600e+00
+-4.71800e-01 1.64200e-02 3.92000e+01
+# Chapter 5 (2->2): n + fe56 -> mn56 + p ((n,p) reaction)
+5    n    fe56 mn56 p                      rath n   -3.69600e+00
+ 5.32100e+00 0.00000e+00-4.56700e+00-6.54800e-01
+ 8.12000e-02-6.23000e-03 2.13400e+00
+# Chapter 1 (1->1): co57 -> fe57 (electron capture / beta+ decay)
+1    co57 fe57                             wc12 w    8.36000e-01
+ 1.45200e+01 0.00000e+00 0.00000e+00 0.00000e+00
+ 0.00000e+00 0.00000e+00 0.00000e+00
+# Chapter 5 (2->2): he4 + fe56 -> ni60 + gamma (alpha capture)
+5    he4  fe56 ni60 g                      rath n    6.35000e+00
+ 2.21500e+01 0.00000e+00-3.16800e+01-1.54300e+00
+ 1.95200e-01-1.42800e-02-8.24000e-01

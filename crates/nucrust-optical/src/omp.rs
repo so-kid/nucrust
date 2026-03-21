@@ -197,7 +197,9 @@ impl OpticalPotential for KoningDelaroche {
         let v_c = coulomb_potential(r, p.rc, channel);
 
         let real = -p.v_real * f_v + p.v_so * ls * f_so / r_safe + v_c;
-        let imag = -p.w_vol * f_v - p.w_surf * df_s + p.w_so * ls * f_so / r_safe;
+        // Absorption: positive Im(V) causes outgoing flux to decrease in the
+        // Fox-Goodwin Numerov integration used by this crate.
+        let imag = p.w_vol * f_v + p.w_surf * df_s - p.w_so * ls * f_so / r_safe;
 
         Complex64::new(real, imag)
     }
@@ -241,7 +243,7 @@ impl OpticalPotential for McFaddenSatchler {
         let f = woods_saxon(r, r0, a, channel);
         let v_c = coulomb_potential(r, rc, channel);
 
-        Complex64::new(-v_real * f + v_c, -w_imag * f)
+        Complex64::new(-v_real * f + v_c, w_imag * f) // positive Im = absorption
     }
 
     fn coulomb_radius(&self, channel: &Channel) -> f64 {
@@ -296,7 +298,7 @@ impl OpticalPotential for Avrigeanu2014 {
         let v_c = coulomb_potential(r, rc, channel);
 
         let real = -v_real * f_v + v_c;
-        let imag = -w_vol * f_w - w_surf * df_s;
+        let imag = w_vol * f_w + w_surf * df_s; // positive Im = absorption
 
         Complex64::new(real, imag)
     }
@@ -490,7 +492,7 @@ mod tests {
         };
         let v = ms.potential(0.0, 20.0, 0, 0.0, &ch);
         assert!(v.re < -100.0); // Deep real well for alpha
-        assert!(v.im < 0.0); // Absorptive
+        assert!(v.im > 0.0); // Absorptive (positive Im in our Numerov convention)
     }
 
     #[test]

@@ -1,0 +1,10 @@
+# RIPL-3 Average Resonance Parameters (subset for Fe region testing)
+# Source: RIPL-3 / Mughabghab compilation
+# Z    A         D0          S0       Gg0          D1          S1
+   26   55 1.500E+04   4.800E-05   1.100E+03
+   26   57 2.500E+04   5.600E-05   1.200E+03
+   26   59 8.600E+03   3.800E-05   9.500E+02   3.500E+03   9.200E-05
+   27   58 1.300E+03   4.200E-05   1.350E+03
+   27   60 5.800E+03   3.600E-05   1.050E+03
+   28   59 1.200E+04   3.200E-05   8.500E+02   4.800E+03   1.100E-04
+   28   61 8.900E+03   2.900E-05   7.800E+02
