@@ -14,6 +14,10 @@ nucrust-optical = { workspace = true }
 nucrust-hf = { workspace = true }
 nucrust-rmatrix = { workspace = true }
 nucrust-astro = { workspace = true }
+num-complex = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
 
 [features]
 default = []

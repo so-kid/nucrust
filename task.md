@@ -113,18 +113,18 @@
 
 #### 球形光学模型（Phase 1 priority）
 
-- [ ] **T-2A.1** `woods_saxon()`, `woods_saxon_deriv()`, `spin_orbit_factor()` ヘルパー（§6.2）
-- [ ] **T-2A.2** `KoningDelaroche` 構造体 + `OpticalPotential` トレイト実装（§6.2, §6.4）
-- [ ] **T-2A.3** `McFaddenSatchler` α粒子 OMP（§6.4）
-- [ ] **T-2A.4** `Avrigeanu2014` α粒子 OMP（§6.4）
-- [ ] **T-2A.5** `CustomOmp` ユーザー定義パラメータ OMP（§6.4）
+- [x] **T-2A.1** `woods_saxon()`, `woods_saxon_deriv()`, `spin_orbit_factor()` ヘルパー（§6.2）
+- [x] **T-2A.2** `KoningDelaroche` 構造体 + `OpticalPotential` トレイト実装（§6.2, §6.4）
+- [x] **T-2A.3** `McFaddenSatchler` α粒子 OMP（§6.4）
+- [x] **T-2A.4** `Avrigeanu2014` α粒子 OMP（§6.4）
+- [x] **T-2A.5** `CustomOmp` ユーザー定義パラメータ OMP（§6.4）
 
 #### Numerov 積分
 
-- [ ] **T-2A.6** `NumerovConfig` 設定型（§6.3.1: step_size, r_min, convergence_tl, max_l）
-- [ ] **T-2A.7** Fox-Goodwin 比変数法 `numerov_integrate()`（§6.3.1: 比変数 $R_n$ 漸化式）
-- [ ] **T-2A.8** S行列抽出（§6.3.2: 対数微分 $L_l$ → $S_l$, Coulomb 関数連携）
-- [ ] **T-2A.9** `compute_transmission_coeffs()`（§6.3.3: l-s 分離, l_max 収束判定）
+- [x] **T-2A.6** `NumerovConfig` 設定型（§6.3.1: step_size, r_min, convergence_tl, max_l）
+- [x] **T-2A.7** Fox-Goodwin 比変数法 `numerov_integrate()`（§6.3.1: 比変数 $R_n$ 漸化式）
+- [x] **T-2A.8** S行列抽出（§6.3.2: 対数微分 $L_l$ → $S_l$, Coulomb 関数連携）
+- [x] **T-2A.9** `compute_transmission_coeffs()`（§6.3.3: l-s 分離, l_max 収束判定）
 
 #### 結合チャンネル（Phase 2 拡張）
 
@@ -141,28 +141,28 @@
 
 #### Hauser-Feshbach 中核
 
-- [ ] **T-2B.1** `HfConfig` 型（§7.1.2: j_max, max_particle_stages, max_gamma_steps, WfcModel）
-- [ ] **T-2B.2** Jπ 合算ループ（§7.1.3: 入射/出射チャンネル透過係数、三角条件・パリティ選択則）
-- [ ] **T-2B.3** 離散準位と連続準位の接続処理（§7.1.4: Gilbert-Cameron マッチング）
-- [ ] **T-2B.4** 連続準位積分: $\int T_{lj}(E-U) \cdot \rho(U) dU$（§7.1.3）
-- [ ] **T-2B.5** γ線チャンネル透過係数（§7.1.3: 多極子合算、$f_{XL}(E_γ) \cdot E_γ^{2L+1} \cdot \rho$）
+- [x] **T-2B.1** `HfConfig` 型（§7.1.2: j_max, max_particle_stages, max_gamma_steps, WfcModel）
+- [x] **T-2B.2** Jπ 合算ループ（§7.1.3: 入射/出射チャンネル透過係数、三角条件・パリティ選択則）
+- [x] **T-2B.3** 離散準位と連続準位の接続処理（§7.1.4: Gilbert-Cameron マッチング）
+- [x] **T-2B.4** 連続準位積分: $\int T_{lj}(E-U) \cdot \rho(U) dU$（§7.1.3）
+- [x] **T-2B.5** γ線チャンネル透過係数（§7.1.3: 多極子合算、$f_{XL}(E_γ) \cdot E_γ^{2L+1} \cdot \rho$）
 
 #### 多粒子放出カスケード
 
-- [ ] **T-2B.6** 明示的スタック方式カスケード計算 `cascade_calculation()`（§7.2: `CascadeState` スタック）
-- [ ] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 最大30ステップ）
+- [x] **T-2B.6** 明示的スタック方式カスケード計算 `cascade_calculation()`（§7.2: `CascadeState` スタック）
+- [x] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 最大30ステップ）
 
 #### 幅揺らぎ補正 (WFC)
 
-- [ ] **T-2B.8** Moldauer WFC 1次元積分（§7.3.1: $W_{ab}$ 補正因子、弾性散乱増強）
-- [ ] **T-2B.9** Kawano-Talou $\nu_a$ パラメータ化（§7.3.2: GOE 最良フィット）
+- [x] **T-2B.8** Moldauer WFC 1次元積分（§7.3.1: $W_{ab}$ 補正因子、弾性散乱増強）
+- [x] **T-2B.9** Kawano-Talou $\nu_a$ パラメータ化（§7.3.2: GOE 最良フィット）
 - [ ] **T-2B.10** GOE 三重積分（§7.3.4: VWZ 公式、Gauss-Laguerre 20–32点）— Phase 2 後半
 
 #### NLD/GSF モデル
 
-- [ ] **T-2B.11** NLD 実装: `ConstantTemperature`, `BackShiftedFermiGas`, `GilbertCameron`, `Ignatyuk`, `HfbTableInterp`（§7.4）
-- [ ] **T-2B.12** GSF 実装: `StandardLorentzian`, `EnhancedGeneralizedLorentzian`, `QrpaTableInterp`（§7.4）
-- [ ] **T-2B.13** `LevelDensity` + `GammaStrength` トレイト実装（各モデル）
+- [x] **T-2B.11** NLD 実装: `ConstantTemperature`, `BackShiftedFermiGas`, `GilbertCameron`, `Ignatyuk`, `HfbTableInterp`（§7.4）
+- [x] **T-2B.12** GSF 実装: `StandardLorentzian`, `EnhancedGeneralizedLorentzian`, `QrpaTableInterp`（§7.4）
+- [x] **T-2B.13** `LevelDensity` + `GammaStrength` トレイト実装（各モデル）
 
 #### 検証テスト
 
@@ -173,21 +173,21 @@
 
 #### R-matrix 計算
 
-- [ ] **T-2C.1** `RMatrixParams`, `RMatrixChannel`, `RMatrixLevel`, `BoundaryCondition` 型（§8.1.2）
-- [ ] **T-2C.2** R行列構築 + $(1-RL^0)^{-1}$ LU 分解（§8.1.1: faer 使用）
-- [ ] **T-2C.3** 衝突行列 $U_{cc'}$ 構成（§8.1.1: 透過因子 $P_c$, Coulomb 位相因子 $\Omega_c$）
-- [ ] **T-2C.4** `rmatrix_cross_section()` → `RMatrixResult`（§8.1.3）
+- [x] **T-2C.1** `RMatrixParams`, `RMatrixChannel`, `RMatrixLevel`, `BoundaryCondition` 型（§8.1.2）
+- [x] **T-2C.2** R行列構築 + $(1-RL^0)^{-1}$ LU 分解（§8.1.1: faer 使用）
+- [x] **T-2C.3** 衝突行列 $U_{cc'}$ 構成（§8.1.1: 透過因子 $P_c$, Coulomb 位相因子 $\Omega_c$）
+- [x] **T-2C.4** `rmatrix_cross_section()` → `RMatrixResult`（§8.1.3）
 
 #### Brune 変換
 
-- [ ] **T-2C.5** 非線形固有値問題ソルバー（§8.2.1: Newton 法、収束閾値 1e-12）
-- [ ] **T-2C.6** `standard_to_brune()` / `brune_to_standard()` 変換関数（§8.2.2）
-- [ ] **T-2C.7** 準位シフト関数 $S_c(E)$ + $dS_c/dE$ の計算（§8.2.3）
+- [x] **T-2C.5** 非線形固有値問題ソルバー（§8.2.1: Newton 法、収束閾値 1e-12）
+- [x] **T-2C.6** `standard_to_brune()` / `brune_to_standard()` 変換関数（§8.2.2）
+- [x] **T-2C.7** 準位シフト関数 $S_c(E)$ + $dS_c/dE$ の計算（§8.2.3）
 
 #### χ² フィッティング
 
-- [ ] **T-2C.8** Levenberg-Marquardt 法 `levenberg_marquardt()`（§8.3.1: 有限差分 Jacobian）
-- [ ] **T-2C.9** Affine-invariant MCMC `mcmc_sample()`（§8.3.2: Goodman-Weare, ストリーミング HDF5 出力）
+- [x] **T-2C.8** Levenberg-Marquardt 法 `levenberg_marquardt()`（§8.3.1: 有限差分 Jacobian）
+- [x] **T-2C.9** Affine-invariant MCMC `mcmc_sample()`（§8.3.2: Goodman-Weare, ストリーミング HDF5 出力）
 
 #### 検証テスト
 

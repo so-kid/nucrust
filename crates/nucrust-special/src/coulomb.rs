@@ -1,7 +1,6 @@
 use crate::error::SpecialError;
 use crate::gamma::{coulomb_phase_shift, gamow_factor};
-use crate::lentz::{continued_fraction_complex, continued_fraction_real};
-use num_complex::Complex64;
+use crate::lentz::continued_fraction_real;
 
 /// Maximum iterations for continued fractions.
 const MAX_ITER: u32 = 20_000;
@@ -89,33 +88,82 @@ fn cf1(l: f64, eta: f64, rho: f64) -> Result<f64, SpecialError> {
 
 // ======================== CF2: p + iq = H^+' / H^+ ========================
 
-/// Evaluate CF2. Returns (p, q) where p + iq = H^{+\prime}_l / H^+_l.
+/// Evaluate CF2 using the Steed algorithm.
+///
+/// Returns (p, q) where p + iq = H^{+\prime}_l / H^+_l.
+///
+/// This uses the Steed (1982) / Barnett algorithm which accumulates P and Q
+/// as sums of corrections. This is essential for correctness when l > 0,
+/// where the Lentz method on the DLMF continued fraction can terminate
+/// prematurely and produce wrong results.
+///
+/// Reference: GSL specfunc/coulomb.c `coulomb_CF2`; Barnett (1982) CPC 27, 147.
 fn cf2(l: f64, eta: f64, rho: f64) -> Result<(f64, f64), SpecialError> {
-    let b0 = Complex64::new(0.0, 1.0 - eta / rho);
+    let wi = 2.0 * eta;
+    let x_inv = 1.0 / rho;
+    let e2mm1 = eta * eta + l * (l + 1.0);
 
-    let result = continued_fraction_complex(
-        |n| {
-            let nf = n as f64;
-            Complex64::new(nf + l, eta) * Complex64::new(nf - 1.0 - l, eta)
-        },
-        |n| {
-            if n == 0 {
-                b0
-            } else {
-                Complex64::new(2.0 * (rho - eta), 2.0 * n as f64)
-            }
-        },
-        MAX_ITER,
-        CF_EPS,
-    )?;
+    let mut ar = -e2mm1;
+    let mut ai = eta;
+    let br = 2.0 * (rho - eta);
+    let mut bi = 2.0;
 
-    Ok((result.re, result.im))
+    // d = 1/(br + i*bi)
+    let denom = br * br + bi * bi;
+    if denom < 1e-300 {
+        return Err(SpecialError::NumericalOverflow {
+            context: "CF2: initial denominator ~ 0",
+        });
+    }
+    let mut dr = br / denom;
+    let mut di = -bi / denom;
+
+    // First correction: dp + i*dq = (i/rho) * (ar + i*ai) / (br + i*bi)
+    let mut dp = -x_inv * (ar * di + ai * dr);
+    let mut dq = x_inv * (ar * dr - ai * di);
+
+    let mut p = 0.0;
+    let mut q = 1.0 - eta * x_inv;
+
+    let mut pk = 0.0;
+
+    for _ in 1..=MAX_ITER {
+        p += dp;
+        q += dq;
+        pk += 2.0;
+        ar += pk;
+        ai += wi;
+        bi += 2.0;
+
+        let d_re = ar * dr - ai * di + br;
+        let d_im = ai * dr + ar * di + bi;
+        let c = 1.0 / (d_re * d_re + d_im * d_im);
+        dr = c * d_re;
+        di = -c * d_im;
+
+        let a = br * dr - bi * di - 1.0;
+        let b = bi * dr + br * di;
+        let new_dp = dp * a - dq * b;
+        dq = dp * b + dq * a;
+        dp = new_dp;
+
+        if dp.abs() + dq.abs() <= (p.abs() + q.abs()) * CF_EPS {
+            return Ok((p, q));
+        }
+    }
+
+    Err(SpecialError::ConvergenceFailure {
+        algorithm: "CF2 (Steed)",
+        iterations: MAX_ITER,
+        residual: (p * p + q * q).sqrt(),
+    })
 }
 
 // ======================== Wronskian coupling (Steed method) ========================
 
 /// Determine the sign of F_l using the asymptotic phase.
 ///
+/// Used only at l=0 where the asymptotic phase is reliable.
 /// In the oscillatory region: F_l ~ sin(theta_l) where
 /// theta_l = rho - eta*ln(2*rho) - l*pi/2 + sigma_l
 ///
@@ -132,7 +180,8 @@ fn f_sign(l: f64, eta: f64, rho: f64) -> f64 {
 
 /// Compute F_l, G_l, F'_l, G'_l at a single l using Steed method.
 ///
-/// Case 3: Most efficient for real rho > 0.5.
+/// Note: Only called at l=0 by `coulomb_wave` to ensure reliable sign
+/// determination. Higher l values are obtained via recurrence.
 fn steed_method(l: f64, eta: f64, rho: f64) -> Result<(f64, f64, f64, f64), SpecialError> {
     let f_ratio = cf1(l, eta, rho)?;
     let (p, q) = cf2(l, eta, rho)?;
@@ -377,10 +426,14 @@ fn g_backward_numerov(l: f64, eta: f64, rho_target: f64) -> Result<(f64, f64), S
 /// Compute Coulomb wave functions F_l, G_l, F'_l, G'_l, sigma_l.
 ///
 /// # Algorithm
-/// - rho > 0.5: Steed method at l_min, then G upward recurrence.
-///   For F: CF1 at l_max, downward recurrence, normalize against Steed F at l_min.
-/// - rho <= 0.5: Power series for F at each l, CF2 for G at l_min + upward recurrence.
-/// - Single l: direct Steed or power series.
+/// Always computes from l=0 internally using Steed + recurrence, matching the
+/// standard Thompson-Barnett / GSL approach. This ensures correct sign
+/// determination (Steed at l=0 has a trivially correct sign) and stable G
+/// upward recurrence.
+///
+/// - rho > 0.5 (oscillatory): Steed at l=0, G upward recurrence, F downward
+///   recurrence from l_max normalized against Steed F at l=0.
+/// - rho <= 0.5 or forbidden region: Power series for F, CF2/Numerov for G.
 pub fn coulomb_wave(
     eta: f64,
     rho: f64,
@@ -419,93 +472,82 @@ pub fn coulomb_wave(
         });
     }
 
+    // Always compute from l=0 to l_max for correct sign determination and
+    // stable G recurrence (matching GSL/COULCC approach).
     let l_max = l_min + n_l - 1;
-    let n = n_l as usize;
+    let total_l = (l_max + 1) as usize; // l = 0..l_max
 
-    let (f_vals, g_vals, fp_vals, gp_vals);
+    let (f_all, g_all, fp_all, gp_all);
 
-    // Determine if we're in the forbidden region
-    let rho_tp = eta + (eta * eta + (l_min as f64) * (l_min as f64 + 1.0)).sqrt();
-    let in_forbidden = rho < rho_tp * 0.9; // 90% of turning point
+    // Determine if we're in the forbidden region (using l=0 turning point)
+    let rho_tp_0 = eta + (eta * eta).sqrt(); // l=0: rho_tp = eta + |eta|
+    let in_forbidden = rho < rho_tp_0 * 0.9;
 
     if rho > RHO_SMALL && !in_forbidden {
-        // === Oscillatory region: Steed method ===
+        // === Oscillatory region: Steed method at l=0 ===
+        let (f_0, g_0, fp_0, gp_0) = steed_method(0.0, eta, rho)?;
 
-        let (f_min, g_min, fp_min, gp_min) = steed_method(l_min as f64, eta, rho)?;
-
-        if n_l == 1 {
-            f_vals = vec![f_min];
-            g_vals = vec![g_min];
-            fp_vals = vec![fp_min];
-            gp_vals = vec![gp_min];
+        if l_max == 0 {
+            f_all = vec![f_0];
+            g_all = vec![g_0];
+            fp_all = vec![fp_0];
+            gp_all = vec![gp_0];
         } else {
-            // Step 2: G upward recurrence (stable)
-            let (g_up, gp_up) = recurrence_g_upward(l_min, l_max, eta, rho, g_min, gp_min);
-            g_vals = g_up;
-            gp_vals = gp_up;
+            // G upward recurrence from l=0 (stable)
+            let (g_up, gp_up) = recurrence_g_upward(0, l_max, eta, rho, g_0, gp_0);
+            g_all = g_up;
+            gp_all = gp_up;
 
-            // Step 3: F downward recurrence
-            // Get f_{l_max} = F'/F at l_max from CF1
+            // F downward recurrence from l_max, normalized against Steed at l=0
             let f_ratio_top = cf1(l_max as f64, eta, rho)?;
+            let (f_unnorm, fp_unnorm) = recurrence_f_downward(l_max, 0, eta, rho, f_ratio_top);
 
-            // Downward recurrence with arbitrary normalization
-            let (f_unnorm, fp_unnorm) = recurrence_f_downward(l_max, l_min, eta, rho, f_ratio_top);
-
-            // Normalize: scale so that F at l_min matches Steed result
             let scale = if f_unnorm[0].abs() > 1e-300 {
-                f_min / f_unnorm[0]
+                f_0 / f_unnorm[0]
+            } else if fp_unnorm[0].abs() > 1e-300 {
+                fp_0 / fp_unnorm[0]
             } else {
-                // F at l_min is ~0, use F' ratio instead
-                if fp_unnorm[0].abs() > 1e-300 {
-                    fp_min / fp_unnorm[0]
-                } else {
-                    1.0
-                }
+                1.0
             };
 
-            f_vals = f_unnorm.iter().map(|&v| v * scale).collect();
-            fp_vals = fp_unnorm.iter().map(|&v| v * scale).collect();
+            f_all = f_unnorm.iter().map(|&v| v * scale).collect();
+            fp_all = fp_unnorm.iter().map(|&v| v * scale).collect();
         }
     } else if in_forbidden && rho > RHO_SMALL {
-        // === Forbidden region (rho < rho_tp, rho > 0.5): F from power series, G from Numerov ===
-
-        let mut f_v = Vec::with_capacity(n);
-        let mut fp_v = Vec::with_capacity(n);
-        for i in 0..n {
-            let (f, fp) = power_series_f(l_min + i as u32, eta, rho)?;
+        // === Forbidden region: F from power series, G from Numerov ===
+        let mut f_v = Vec::with_capacity(total_l);
+        let mut fp_v = Vec::with_capacity(total_l);
+        for i in 0..total_l {
+            let (f, fp) = power_series_f(i as u32, eta, rho)?;
             f_v.push(f);
             fp_v.push(fp);
         }
 
-        let (g_num, _gp_num) = g_backward_numerov(l_min as f64, eta, rho)?;
+        let (g_num, gp_num) = g_backward_numerov(0.0, eta, rho)?;
         let gp_refined = if f_v[0].abs() > 1e-300 {
             (fp_v[0] * g_num - 1.0) / f_v[0]
         } else {
-            _gp_num
+            gp_num
         };
 
-        let (g_up, gp_up) = recurrence_g_upward(l_min, l_max, eta, rho, g_num, gp_refined);
+        let (g_up, gp_up) = recurrence_g_upward(0, l_max, eta, rho, g_num, gp_refined);
 
-        f_vals = f_v;
-        fp_vals = fp_v;
-        g_vals = g_up;
-        gp_vals = gp_up;
+        f_all = f_v;
+        fp_all = fp_v;
+        g_all = g_up;
+        gp_all = gp_up;
     } else {
-        // === Small rho: power series for F, backward Numerov for G ===
-
-        let mut f_v = Vec::with_capacity(n);
-        let mut fp_v = Vec::with_capacity(n);
-        for i in 0..n {
-            let (f, fp) = power_series_f(l_min + i as u32, eta, rho)?;
+        // === Small rho: power series for F, CF2/Numerov for G ===
+        let mut f_v = Vec::with_capacity(total_l);
+        let mut fp_v = Vec::with_capacity(total_l);
+        for i in 0..total_l {
+            let (f, fp) = power_series_f(i as u32, eta, rho)?;
             f_v.push(f);
             fp_v.push(fp);
         }
 
-        // G at l_min: first try CF2 at current rho (works if rho is not too deep
-        // in the forbidden region). If it fails or gives bad Wronskian, use
-        // backward Numerov integration from the oscillatory region.
-        let (g_min, gp_min) = {
-            let cf2_result = cf2(l_min as f64, eta, rho);
+        let (g_0, gp_0) = {
+            let cf2_result = cf2(0.0, eta, rho);
             let mut g_ok = None;
 
             if let Ok((p, q)) = cf2_result {
@@ -513,13 +555,12 @@ pub fn coulomb_wave(
                     let f_ratio = if f_v[0].abs() > 1e-300 {
                         fp_v[0] / f_v[0]
                     } else {
-                        cf1(l_min as f64, eta, rho).unwrap_or(0.0)
+                        cf1(0.0, eta, rho).unwrap_or(0.0)
                     };
                     let gamm = (f_ratio - p) / q;
                     let g_try = gamm * f_v[0];
                     let gp_try = p * g_try - q * f_v[0];
 
-                    // Check Wronskian quality
                     let w = fp_v[0] * g_try - f_v[0] * gp_try;
                     if (w - 1.0).abs() < 0.01 {
                         g_ok = Some((g_try, gp_try));
@@ -530,11 +571,7 @@ pub fn coulomb_wave(
             match g_ok {
                 Some(val) => val,
                 None => {
-                    // CF2 failed or gave bad result. Use backward Numerov.
-                    let (g_num, gp_num) = g_backward_numerov(l_min as f64, eta, rho)?;
-
-                    // Refine G' using the Wronskian: F'G - FG' = 1
-                    // => G' = (F'G - 1) / F
+                    let (g_num, gp_num) = g_backward_numerov(0.0, eta, rho)?;
                     let gp_refined = if f_v[0].abs() > 1e-300 {
                         (fp_v[0] * g_num - 1.0) / f_v[0]
                     } else {
@@ -545,24 +582,27 @@ pub fn coulomb_wave(
             }
         };
 
-        // G upward recurrence
-        let (g_up, gp_up) = recurrence_g_upward(l_min, l_max, eta, rho, g_min, gp_min);
+        let (g_up, gp_up) = recurrence_g_upward(0, l_max, eta, rho, g_0, gp_0);
 
-        f_vals = f_v;
-        fp_vals = fp_v;
-        g_vals = g_up;
-        gp_vals = gp_up;
+        f_all = f_v;
+        fp_all = fp_v;
+        g_all = g_up;
+        gp_all = gp_up;
     }
+
+    // Slice to requested range [l_min..l_min+n_l]
+    let start = l_min as usize;
+    let end = start + n_l as usize;
 
     let sigma: Vec<f64> = (0..n_l)
         .map(|i| coulomb_phase_shift(l_min + i, eta))
         .collect();
 
     Ok(CoulombResult {
-        f: f_vals,
-        g: g_vals,
-        fp: fp_vals,
-        gp: gp_vals,
+        f: f_all[start..end].to_vec(),
+        g: g_all[start..end].to_vec(),
+        fp: fp_all[start..end].to_vec(),
+        gp: gp_all[start..end].to_vec(),
         sigma,
         exponent: 0.0,
     })
@@ -729,6 +769,98 @@ mod tests {
         let result = coulomb_wave(0.0, 3.0, 0, 3).unwrap();
         for (i, &s) in result.sigma.iter().enumerate() {
             assert!(s.abs() < 1e-13, "sigma_{}(0) = {}", i, s);
+        }
+    }
+
+    #[test]
+    fn lmin_gt0_matches_from_zero() {
+        // A-1 bug: coulomb_wave(eta, rho, l_min=L, 1) should match
+        // coulomb_wave(eta, rho, 0, L+1)[L]
+        let cases = vec![
+            (0.0, 3.0, 1u32),
+            (0.0, 3.0, 2),
+            (1.0, 5.0, 1),
+            (1.0, 5.0, 2),
+            (1.5, 3.5, 2),
+            (2.0, 5.0, 1),
+            (2.0, 5.0, 3),
+            (5.0, 10.0, 2),
+            (5.0, 10.0, 5),
+            (0.5, 2.0, 1),
+            (0.5, 2.0, 3),
+            (10.0, 15.0, 1),
+            (10.0, 15.0, 3),
+            (3.0, 8.0, 4),
+            (1.0, 1.5, 1),
+            (1.0, 1.5, 2),
+        ];
+
+        for (eta, rho, l) in cases {
+            let direct = coulomb_wave(eta, rho, l, 1).unwrap();
+            let from_zero = coulomb_wave(eta, rho, 0, l + 1).unwrap();
+            let idx = l as usize;
+
+            let f_rel = if from_zero.f[idx].abs() > 1e-15 {
+                ((direct.f[0] - from_zero.f[idx]) / from_zero.f[idx]).abs()
+            } else {
+                (direct.f[0] - from_zero.f[idx]).abs()
+            };
+            let g_rel = if from_zero.g[idx].abs() > 1e-15 {
+                ((direct.g[0] - from_zero.g[idx]) / from_zero.g[idx]).abs()
+            } else {
+                (direct.g[0] - from_zero.g[idx]).abs()
+            };
+
+            assert!(
+                f_rel < 1e-8,
+                "F mismatch at eta={}, rho={}, l={}: direct={:.10e}, from0={:.10e}, rel={:.2e}",
+                eta, rho, l, direct.f[0], from_zero.f[idx], f_rel
+            );
+            assert!(
+                g_rel < 1e-8,
+                "G mismatch at eta={}, rho={}, l={}: direct={:.10e}, from0={:.10e}, rel={:.2e}",
+                eta, rho, l, direct.g[0], from_zero.g[idx], g_rel
+            );
+
+            // Also check Wronskian for direct computation
+            let w = direct.fp[0] * direct.g[0] - direct.f[0] * direct.gp[0];
+            assert!(
+                (w - 1.0).abs() < 1e-8,
+                "Wronskian bad at eta={}, rho={}, l={}: W={:.10e}",
+                eta, rho, l, w
+            );
+        }
+    }
+
+    #[test]
+    fn lmin_gt0_multi_l_consistency() {
+        // coulomb_wave(eta, rho, l_min=2, n_l=3) should match
+        // coulomb_wave(eta, rho, 0, 5)[2..5]
+        let cases = vec![
+            (0.0, 5.0),
+            (1.0, 5.0),
+            (2.0, 8.0),
+            (5.0, 12.0),
+        ];
+
+        for (eta, rho) in cases {
+            let from_lmin = coulomb_wave(eta, rho, 2, 3).unwrap();
+            let from_zero = coulomb_wave(eta, rho, 0, 5).unwrap();
+
+            for i in 0..3 {
+                let idx = i + 2;
+                let f_rel = if from_zero.f[idx].abs() > 1e-15 {
+                    ((from_lmin.f[i] - from_zero.f[idx]) / from_zero.f[idx]).abs()
+                } else {
+                    (from_lmin.f[i] - from_zero.f[idx]).abs()
+                };
+                assert!(
+                    f_rel < 1e-10,
+                    "F mismatch at eta={}, rho={}, l={}: rel={:.2e}",
+                    eta, rho, i + 2, f_rel
+                );
+            }
+            check_wronskian(&from_lmin, 1e-8);
         }
     }
 

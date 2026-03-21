@@ -13,8 +13,6 @@ pub mod traits;
 pub mod transmission;
 pub mod units;
 
-#[cfg(feature = "parallel")]
-pub use backend::CpuBackend;
 pub use backend::{ComputeBackend, GsfModelParams, NldModelParams, ToDeviceParams};
 pub use channel::Channel;
 pub use collision_matrix::CollisionMatrix;

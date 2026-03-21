@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 nucrust-core = { workspace = true }
 nucrust-optical = { workspace = true }
+nucrust-data = { workspace = true }
 
 [dev-dependencies]
 approx = { workspace = true }
