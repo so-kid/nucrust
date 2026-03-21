@@ -1,10 +1,14 @@
 [package]
-name = "nucrust"
-description = "GPU-accelerated nuclear reaction rate calculation framework"
+name = "nucrust-python"
+description = "Python bindings for nucrust via PyO3"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+
+[lib]
+name = "nucrust_python"
+crate-type = ["cdylib"]
 
 [dependencies]
 nucrust-core = { workspace = true }
@@ -14,17 +18,8 @@ nucrust-optical = { workspace = true }
 nucrust-hf = { workspace = true }
 nucrust-rmatrix = { workspace = true }
 nucrust-astro = { workspace = true }
-num-complex = { workspace = true }
-clap = { workspace = true }
-serde_json = { workspace = true }
-
-[dev-dependencies]
-approx = { workspace = true }
-proptest = { workspace = true }
-
-[[bin]]
-name = "nucrust"
-path = "src/main.rs"
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"
 
 [features]
 default = []

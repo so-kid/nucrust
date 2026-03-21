@@ -1,6 +1,7 @@
 pub mod cpu_backend;
 
 pub use cpu_backend::CpuBackend;
+pub use nucrust_astro;
 pub use nucrust_core;
 pub use nucrust_data;
 pub use nucrust_hf;

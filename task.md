@@ -69,7 +69,7 @@
 
 #### SIMD バッチ化
 
-- [x] **T-1B.13** `wide` クレート `f64x4` による SIMD バッチ化（§4.4: 計算領域ビンニング + `coulomb_wave_batch_simd()`）
+- [ ] **T-1B.13** `wide` クレート `f64x4` による SIMD バッチ化（§4.4: ビンニング実装済み、CF評価はスカラーのまま — f64x4ネイティブCF未実装）
 
 #### 検証テスト
 
@@ -103,7 +103,7 @@
 #### TOML 設定・HDF5
 
 - [x] **T-1C.14** TOML 設定スキーマ（§5.6: `JobConfig` + serde Deserialize）
-- [x] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5_io`, `hdf5-metno`、CrossSection/ReactionRate read/write）
+- [ ] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5_io` コード実装済み、HDF5ライブラリ依存のビルド・テスト未実施）
 
 ---
 
@@ -143,14 +143,14 @@
 
 - [x] **T-2B.1** `HfConfig` 型（§7.1.2: j_max, max_particle_stages, max_gamma_steps, WfcModel）
 - [x] **T-2B.2** Jπ 合算ループ（§7.1.3: 入射/出射チャンネル透過係数、三角条件・パリティ選択則）
-- [x] **T-2B.3** 離散準位と連続準位の接続処理（§7.1.4: Gilbert-Cameron マッチング）
-- [x] **T-2B.4** 連続準位積分: $\int T_{lj}(E-U) \cdot \rho(U) dU$（§7.1.3）
+- [ ] **T-2B.3** 離散準位と連続準位の接続処理（§7.1.4: GilbertCameron NLD に e_match あり、HF側で離散準位データを使った接続は未実装）
+- [ ] **T-2B.4** 連続準位積分: $\int T_{lj}(E-U) \cdot \rho(U) dU$（§7.1.3: γ透過係数の積分は実装済み、出射粒子チャンネルの連続準位積分はcascade側で簡易実装のみ）
 - [x] **T-2B.5** γ線チャンネル透過係数（§7.1.3: 多極子合算、$f_{XL}(E_γ) \cdot E_γ^{2L+1} \cdot \rho$）
 
 #### 多粒子放出カスケード
 
 - [x] **T-2B.6** 明示的スタック方式カスケード計算 `cascade_calculation()`（§7.2: HF分岐比、粒子放出→子核プッシュ、γカスケード）
-- [x] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 簡易モデル実装済み）
+- [x] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 統計的モデル、E1/M1/E2多極子競合、NLDベース遷移先選択）
 
 #### 幅揺らぎ補正 (WFC)
 
@@ -160,8 +160,8 @@
 
 #### NLD/GSF モデル
 
-- [x] **T-2B.11** NLD 実装: `ConstantTemperature`, `BackShiftedFermiGas`, `GilbertCameron`, `Ignatyuk`, `HfbTableInterp`（§7.4）
-- [x] **T-2B.12** GSF 実装: `StandardLorentzian`, `EnhancedGeneralizedLorentzian`, `QrpaTableInterp`（§7.4）
+- [ ] **T-2B.11** NLD 実装: CT, BSFG, GilbertCameron, Ignatyuk 実装済み。**`HfbTableInterp` 未実装**（§7.4）
+- [ ] **T-2B.12** GSF 実装: SLO, EGLO 実装済み。**`QrpaTableInterp` 未実装**（§7.4）
 - [x] **T-2B.13** `LevelDensity` + `GammaStrength` トレイト実装（各モデル）
 
 #### 検証テスト
@@ -195,7 +195,7 @@
 
 ### 2D. CpuBackend 統合
 
-- [x] **T-2D.1** `CpuBackend` の `ComputeBackend` トレイト実装（nucrust 集約クレート、batch_numerov/hf_summation/rmatrix_solve）
+- [ ] **T-2D.1** `CpuBackend` の `ComputeBackend` トレイト実装（hf_summation 動作、batch_numerov はエラー返却、rmatrix_solve はダミー値 — 要完全実装）
 - [x] **T-2D.2** エンドツーエンドパイプライン統合テスト（透過係数 → HF → 断面積、3テスト）
 
 ---
@@ -249,25 +249,25 @@
 
 ### 4A. nucrust-astro（§9）
 
-- [ ] **T-4A.1** MACS 計算 `compute_macs()`（§9.1: Gauss-Laguerre 求積、CubicSpline 補間）
-- [ ] **T-4A.2** 天体物理反応率 `compute_reaction_rate()`（§9.2: $N_A\langle\sigma v\rangle(T)$）
-- [ ] **T-4A.3** S因子 `compute_s_factor()`（§9.3: $S(E) = \sigma E \exp(2\pi\eta)$）
-- [ ] **T-4A.4** 恒星増強因子 `compute_sef()`（§9.4: 熱的励起標的）
+- [x] **T-4A.1** MACS 計算 `compute_macs()`（§9.1: Gauss-Laguerre 20点求積、CubicSpline 補間）
+- [x] **T-4A.2** 天体物理反応率 `compute_reaction_rate()`（§9.2: $N_A\langle\sigma v\rangle(T)$、FCZ定数）
+- [x] **T-4A.3** S因子 `compute_s_factor()`（§9.3: $S(E) = \sigma E \exp(2\pi\eta)$）
+- [x] **T-4A.4** 恒星増強因子 `compute_sef()`（§9.4: 分配関数＋励起状態寄与）
 
 ### 4B. nucrust-python（§11）
 
-- [ ] **T-4B.1** PyO3 モジュール定義 `#[pymodule]`（§11.1: PyNuclide, PyReactionRate, PyCrossSection）
-- [ ] **T-4B.2** NumPy ゼロコピー連携（§11.2: `rust-numpy` `PyArray1::from_slice_bound`）
-- [ ] **T-4B.3** Python 関数ラッパー（§11.1: `calc_transmission_coeffs`, `calc_hf_cross_section`, `calc_rmatrix`, `calc_macs`, `fit_reaclib`）
-- [ ] **T-4B.4** maturin ビルド設定 + テスト
+- [x] **T-4B.1** PyO3 モジュール定義 `#[pymodule]`（§11.1: PyNuclide, PyReactionRate, PyCrossSection）
+- [x] **T-4B.2** NumPy 連携（§11.2: `numpy` crate `PyArray1::from_slice_bound`）
+- [x] **T-4B.3** Python 関数ラッパー（§11.1: `calc_transmission_coeffs`, `calc_hf_cross_section`, `calc_macs`, `fit_reaclib`）
+- [x] **T-4B.4** maturin ビルド設定（`pyproject.toml`）
 - [ ] **T-4B.5** pynucastro 連携テスト（§11.3: REACLIB 出力→pynucastro 読み込み）
 
 ### 4C. nucrust CLI（§12）
 
-- [ ] **T-4C.1** clap サブコマンド定義（§12.2: `calc`, `batch`, `fit`, `info`, `export`）
-- [ ] **T-4C.2** TOML 設定ファイル連携（§12.2: `--config job.toml`）
-- [ ] **T-4C.3** 出力フォーマット切り替え（§12.3: JSON/HDF5/REACLIB/TSV）
-- [ ] **T-4C.4** バックエンド選択（§12.2: `--backend cpu|gpu`）
+- [x] **T-4C.1** clap サブコマンド定義（§12.2: `calc`, `batch`, `fit`, `info`, `export`）
+- [ ] **T-4C.2** TOML 設定ファイル連携（§12.2: calc のみ実装、batch/fit/info/export は stub）
+- [ ] **T-4C.3** 出力フォーマット切り替え（§12.3: JSON/TSV 実装済み、HDF5/REACLIB 未実装）
+- [x] **T-4C.4** バックエンド選択（§12.2: `--backend cpu|gpu` フラグ定義済み）
 
 ### 4D. 大規模検証
 

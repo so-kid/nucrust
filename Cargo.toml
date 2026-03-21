@@ -9,7 +9,7 @@ members = [
     "crates/nucrust-rmatrix",
     "crates/nucrust-astro",
     "crates/nucrust-gpu",
-    # "crates/nucrust-python",  # Phase 4
+    "crates/nucrust-python",
     "crates/nucrust",
 ]
 
