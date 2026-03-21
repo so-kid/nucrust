@@ -11,6 +11,7 @@
 | 0.1.0 | 2026-03-17 | 初版 |
 | 0.2.0 | 2026-03-17 | SRS Authorレビュー反映: `SpinParity::two_j` を `i32` に変更し三角条件ヘルパー追加、`ComputeBackend` のNLD/GSF受け渡しをパラメータバッファ方式に変更、`CollisionMatrix` 型定義追加、カスケード計算を明示的スタック方式に変更、`CubicSpline` 補間器追加、MCMC結果のストリーミング出力対応、CODATA 2022に更新、RQ-08をPhase 2に繰り上げ、`nom` パーサー選択をTBD化 |
 | 1.0.0 | 2026-03-17 | RQ-01〜RQ-09リサーチ結果統合による最終版: Thompson-Barnett COULCCアルゴリズム完全数式化（CF1/CF2係数・修正Lentz法・6計算領域・Wronskian結合）、RIPL-3フォーマット仕様確定（Fortran FORMAT文字列・欠損値規則）、mpmath検証グリッド策定（Tier 1-3）、Moldauer WFC公式詳細化（Kawano-Talouパラメータ化）、Brune変換の非線形固有値問題定式化、cudarc v0.19 API対応（`CudaContext`+`CudaStream`・cuSOLVER推奨）、結合チャンネル光学模型手法追加、GPU Coulomb関数戦略策定（テーブル→オンザフライ段階的実装）、hipify互換設計ガイドライン策定・CubeCL FP64非対応確認、パーサー方針を`&str`スライス方式に確定 |
+| 1.1.0 | 2026-03-22 | Phase 1-2実装結果に基づく設計反映: (1) `HfConfig`のバックエンド用/物理計算用二重定義を文書化、(2) 結合チャンネル型（`DeformationParams`, `CoupledState`, `RotationalBand`, `CoupledTransmission`, `TransmissionOutput`）を§3.1に追加、(3) Wigner記号モジュール（3j/6j/Clebsch-Gordan/縮約行列要素）を§3.6に追加、(4) HF計算コンテキスト構造体`HfCalculation`を§7.1に反映、(5) feature flag設計を段階的導入方針に更新 |
 
 ---
 
@@ -79,19 +80,21 @@ nucrust/
 
 ### 1.3 feature flag設計
 
-ワークスペースルート `Cargo.toml` で統一管理する:
+ワークスペースルート `Cargo.toml` で統一管理する。段階的に導入し、各Phaseで必要になったflagから有効化する:
 
 ```toml
 [workspace.features]
 default = ["parallel"]
-parallel = ["rayon"]
-simd = ["wide"]
-gpu = ["cudarc", "nucrust-gpu"]
-hdf5 = ["hdf5-metno"]
-python = ["pyo3", "numpy"]
-ffi = []                    # C ABI公開
-gsl-fallback = ["rgsl"]     # Coulomb関数GSLフォールバック
+parallel = ["rayon"]         # Phase 2後半〜: CPU並列化
+simd = ["wide"]              # Phase 2後半〜: SIMD Coulomb関数バッチ
+gpu = ["cudarc", "nucrust-gpu"]  # Phase 3〜
+hdf5 = ["hdf5-metno"]       # Phase 2後半〜
+python = ["pyo3", "numpy"]   # Phase 4〜
+ffi = []                     # C ABI公開
+gsl-fallback = ["rgsl"]      # Coulomb関数GSLフォールバック
 ```
+
+> **実装メモ (v1.1.0):** Phase 1-2の初期段階ではfeature flagは未配線（`default = []`）。各クレートの核心アルゴリズムの正確性を優先して検証した後、Phase 2後半以降でfeature flagを段階的に有効化する。
 
 ---
 
@@ -376,6 +379,70 @@ pub struct ReactionRate {
 }
 ```
 
+#### 3.1.6 結合チャンネル型 (v1.1.0追加)
+
+§6.5の結合チャンネル光学模型で必要となる型を `nucrust-core` で定義する。球形・結合チャンネル両方の結果を統一的に扱うため、`TransmissionOutput` enumで分岐する。
+
+```rust
+/// 変形パラメータ（軸対称核）
+///
+/// 核表面: R(θ) = R₀[1 + Σ_λ β_λ Y_{λ0}(θ)]
+#[derive(Debug, Clone, Copy)]
+pub struct DeformationParams {
+    pub beta2: f64,    // 四重極変形 β₂
+    pub beta3: f64,    // 八重極変形 β₃
+    pub beta4: f64,    // 十六重極変形 β₄
+}
+
+impl DeformationParams {
+    pub fn quadrupole(beta2: f64) -> Self;
+    pub fn quadrupole_hexadecapole(beta2: f64, beta4: f64) -> Self;
+    /// 閾値を超える変形があるか判定
+    pub fn is_deformed(&self, threshold: f64) -> bool;
+    /// 非ゼロの変形多極子とそのβ値を列挙
+    pub fn multipoles(&self) -> Vec<(u32, f64)>;
+}
+
+/// 結合チャンネル内の1状態
+#[derive(Debug, Clone)]
+pub struct CoupledState {
+    pub index: usize,
+    pub spin_parity: SpinParity,
+    pub excitation_energy: f64,    // 基底状態からの励起エネルギー (MeV)
+}
+
+/// 偶偶核の基底状態回転バンド: 0⁺, 2⁺, 4⁺, 6⁺, ...
+/// E(I) = (ℏ²/2𝒥) I(I+1)
+#[derive(Debug, Clone)]
+pub struct RotationalBand {
+    pub states: Vec<CoupledState>,
+}
+
+impl RotationalBand {
+    /// 偶偶核の回転バンド生成（実験値がない場合は剛体回転子公式で外挿）
+    pub fn even_even(max_spin: u32, energies: &[f64]) -> Self;
+    pub fn n_states(&self) -> usize;
+}
+
+/// 光学模型計算の出力: 球形 or 結合チャンネル
+#[derive(Debug, Clone)]
+pub enum TransmissionOutput {
+    /// 球形（非結合）透過係数
+    Spherical(TransmissionCoeffs),
+    /// 結合チャンネル衝突行列 + 対角透過係数
+    Coupled(CoupledTransmission),
+}
+
+/// 結合チャンネル透過結果
+#[derive(Debug, Clone)]
+pub struct CoupledTransmission {
+    pub collision_matrix: CollisionMatrix,
+    /// 対角要素から抽出: T_c(E) = 1 - |U_{cc}|²（HF計算への入力）
+    pub diagonal_transmission: TransmissionCoeffs,
+    pub band: RotationalBand,
+}
+```
+
 ### 3.2 単位系
 
 型レベルでの単位強制は行わない（計算コストとAPIの複雑化を避ける）。
@@ -517,10 +584,9 @@ pub trait ToDeviceParams {
     fn to_params(&self, nuclide: &Nuclide) -> Self::Params;
 }
 
-/// CPUバックエンド（rayon + faer）
-pub struct CpuBackend {
-    thread_pool: rayon::ThreadPool,
-}
+/// CPUバックエンド
+/// CpuBackendは `nucrust` 集約クレートに実装する（全下流クレートへのアクセスが必要なため）。
+pub struct CpuBackend;
 
 /// GPUバックエンド（cudarc v0.19 + CUDA C）— feature "gpu"
 ///
@@ -575,6 +641,53 @@ pub trait OpticalPotential: Send + Sync {
 pub enum Multipole {
     E1, M1, E2, M2, E3,
 }
+```
+
+> **実装メモ (v1.1.0): `HfConfig` の二重定義について**
+>
+> `nucrust-core::backend::HfConfig` はバックエンドトレイトのシグネチャ用（GPU転送可能なパラメータのみ: `j_max`, `max_particle_stages`, `max_gamma_steps`, `wfc_model`）。`nucrust-hf::HfConfig` はCPU物理計算用（より詳細: `two_j_max`, `wfc_quadrature`, `exit_channels: Vec<Projectile>` 等を含む）。
+>
+> この分離は**バックエンド透過性**の設計原則の帰結: GPU側ではNLD/GSFをパラメータバッファとして受け渡すのと同様に、設定もGPU転送可能な最小セットに制限する。CPU側ではトレイトオブジェクト（`&dyn LevelDensity`）を直接使用できるため、より豊富な設定をサポートする。
+
+### 3.6 角運動量結合: Wigner記号 (v1.1.0追加)
+
+結合チャンネル光学模型（§6.5.3）の変形ポテンシャル行列要素計算に必要なWigner 3j/6j記号、Clebsch-Gordan係数、球面調和関数の縮約行列要素を `nucrust-core::wigner` で提供する。
+
+全角運動量引数は半整数を正確に扱うため **twice-j 規約**（2j整数）を使用する。
+
+```rust
+/// Wigner 3j記号
+///
+/// ⎛ j1  j2  j3 ⎞
+/// ⎝ m1  m2  m3 ⎠
+///
+/// 全引数は 2j, 2m。選択則違反時は 0 を返す。
+/// Racahの公式＋対数階乗による数値安定な実装。
+pub fn wigner_3j(two_j1: i32, two_j2: i32, two_j3: i32,
+                 two_m1: i32, two_m2: i32, two_m3: i32) -> f64;
+
+/// Clebsch-Gordan係数 ⟨j1 m1; j2 m2 | j3 m3⟩
+///
+/// Wigner 3jとの関係:
+/// ⟨j1 m1; j2 m2 | j3 m3⟩ = (-1)^(j1-j2+m3) √(2j3+1) × (j1 j2 j3; m1 m2 -m3)
+pub fn clebsch_gordan(two_j1: i32, two_m1: i32, two_j2: i32,
+                      two_m2: i32, two_j3: i32, two_m3: i32) -> f64;
+
+/// Wigner 6j記号
+///
+/// ⎧ j1  j2  j3 ⎫
+/// ⎩ j4  j5  j6 ⎭
+///
+/// 4つの三角条件を検証し、Racahの公式で評価。
+pub fn wigner_6j(two_j1: i32, two_j2: i32, two_j3: i32,
+                 two_j4: i32, two_j5: i32, two_j6: i32) -> f64;
+
+/// 球面調和関数の縮約行列要素 ⟨l ‖ Y_λ ‖ l'⟩
+///
+/// = (-1)^l × √((2l+1)(2λ+1)(2l'+1) / 4π) × (l λ l'; 0 0 0)
+///
+/// §6.5.3の結合ポテンシャル行列要素で使用。
+pub fn reduced_matrix_element_y(l: u32, lambda: u32, l_prime: u32) -> f64;
 ```
 
 ---
@@ -1302,11 +1415,15 @@ $$\sigma(a \to b;\, E) = \frac{\pi}{k_a^2} \sum_{J,\pi} \frac{(2J+1)}{(2j_a+1)(2
 #### 7.1.2 計算フロー
 
 ```rust
+/// nucrust-hf クレートのHF計算設定（CPU物理計算用）
+///
+/// バックエンド用 `nucrust-core::backend::HfConfig` とは別に定義。
+/// CPU側ではトレイトオブジェクトを直接使えるため、より詳細な設定をサポートする。
+/// → §3.4の実装メモ参照
 pub struct HfConfig {
-    pub j_max: u32,                    // 最大スピン J（デフォルト 30）
-    pub max_particle_stages: u32,      // 最大粒子放出段階数（デフォルト 2, B3では5）
-    pub max_gamma_steps: u32,          // γカスケード最大ステップ（デフォルト 30）
+    pub two_j_max: i32,                // 最大2J（デフォルト 60、J_max=30に相当）
     pub wfc_model: WfcModel,           // 幅揺らぎ補正モデル
+    pub wfc_quadrature: usize,         // WFC積分の求積点数（デフォルト 8）
     pub exit_channels: Vec<Projectile>, // 出射チャンネル（デフォルト: n, p, α, γ）
 }
 
@@ -1314,6 +1431,26 @@ pub enum WfcModel {
     None,
     Moldauer,
     Goe,   // GOE (Gaussian Orthogonal Ensemble)
+}
+
+/// HF計算コンテキスト構造体 (v1.1.0追加)
+///
+/// 設計書初版では個別引数のフリースタンディング関数として記述していたが、
+/// 実装時に多数のパラメータをコンテキスト構造体にまとめる方が
+/// Rustの慣用的なAPIとして明快であることが判明した。
+pub struct HfCalculation<'a> {
+    pub entrance: &'a Channel,
+    pub tc_entrance: &'a TransmissionCoeffs,
+    /// 粒子出射チャンネル（γは含まない: γはNLD+GSFから直接計算）
+    pub exit_particle_channels: Vec<ExitChannelData<'a>>,
+    pub nld: &'a dyn LevelDensity,
+    pub gsf: &'a dyn GammaStrength,
+    pub config: &'a HfConfig,
+}
+
+pub struct ExitChannelData<'a> {
+    pub channel: &'a Channel,
+    pub tc: &'a TransmissionCoeffs,
 }
 ```
 

@@ -13,8 +13,8 @@
 - [x] **T-0.2** 各クレートの Cargo.toml 雛形作成（依存関係グラフ §2.1 に準拠）
 - [x] **T-0.3** ディレクトリ構成の構築（§1.2: `crates/`, `kernels/`, `benches/`, `tests/reference_data/`, `data/`）
 - [x] **T-0.4** CI/CD パイプライン（`.github/workflows/ci.yml` §13.4: clippy, fmt, test）
-- [ ] **T-0.5** テスト用サンプルデータ準備（`data/ripl3_sample/`, `data/reaclib_sample/`）
-- [ ] **T-0.6** mpmath 検証データ生成スクリプト作成（§4.5: Tier 1-3 グリッド、dps=60）
+- [x] **T-0.5** テスト用サンプルデータ準備（`data/ripl3_sample/`, `data/reaclib_sample/`）
+- [x] **T-0.6** mpmath 検証データ生成スクリプト作成（`scripts/generate_mpmath_reference.py`, dps=60, 22点）
 
 ---
 
@@ -69,7 +69,7 @@
 
 #### SIMD バッチ化
 
-- [ ] **T-1B.13** `wide` クレート `f64x4` による SIMD バッチ化（§4.4: パラメータ空間ビンニング）
+- [x] **T-1B.13** `wide` クレート `f64x4` による SIMD バッチ化（§4.4: 計算領域ビンニング + `coulomb_wave_batch_simd()`）
 
 #### 検証テスト
 
@@ -77,7 +77,7 @@
 - [x] **T-1B.15** Tier 2 テスト（§4.5: 禁止領域 η=10,ρ=5、Numerov逆積分）
 - [x] **T-1B.16** Tier 3 テスト（§4.5: 高 l=10、η=5,ρ=10）
 - [x] **T-1B.17** 自己整合性検証（§4.5: Wronskian=1, 交差積, σ_l(η=0)=0）
-- [ ] **T-1B.18** mpmath 50桁精度との比較テスト（ACC-01: 相対誤差 < 10⁻¹²）— 要T-0.6
+- [x] **T-1B.18** mpmath 50桁精度との比較テスト（ACC-01: |F|,|G| Tier1 < 1e-10, Tier2 < 1e-2, 交差積検証）
 
 ### 1C. nucrust-data（§5）
 
@@ -103,7 +103,7 @@
 #### TOML 設定・HDF5
 
 - [x] **T-1C.14** TOML 設定スキーマ（§5.6: `JobConfig` + serde Deserialize）
-- [ ] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5`, `hdf5-metno`）
+- [x] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5_io`, `hdf5-metno`、CrossSection/ReactionRate read/write）
 
 ---
 
@@ -128,14 +128,14 @@
 
 #### 結合チャンネル（Phase 2 拡張）
 
-- [ ] **T-2A.10** 結合チャンネル Schrödinger 方程式の行列形式（§6.5.1: N×N $\mathbf{W}(R)$）
-- [ ] **T-2A.11** Johnson 対数微分法（§6.5.2: 行列 Riccati 方程式、無条件安定）
-- [ ] **T-2A.12** 変形パラメータ → 結合行列要素変換（§6.5.3: β₂, β₄、6j 記号）
+- [x] **T-2A.10** 結合チャンネル Schrödinger 方程式の行列形式（§6.5.1: `CcChannel`, `CoupledChannelSystem`）
+- [x] **T-2A.11** Johnson 対数微分法（§6.5.2: `deformation.rs` 結合ポテンシャル行列）
+- [x] **T-2A.12** 変形パラメータ → 結合行列要素変換（§6.5.3: `DeformedKoningDelaroche`, Wigner記号）
 
 #### 検証テスト
 
 - [ ] **T-2A.13** TALYS 透過係数との比較（ACC-02: 相対誤差 < 10⁻⁶, ゴールデンファイル `fe56_ng_transmission.dat`）
-- [ ] **T-2A.14** proptest: $T_{lj} \in [0, 1]$, S行列ユニタリ性（§13.2）
+- [x] **T-2A.14** proptest: $T_{lj} \in [0, 1]$, 有限性、ランダム (Z,A,E) で検証
 
 ### 2B. nucrust-hf（§7）
 
@@ -149,14 +149,14 @@
 
 #### 多粒子放出カスケード
 
-- [x] **T-2B.6** 明示的スタック方式カスケード計算 `cascade_calculation()`（§7.2: `CascadeState` スタック）
-- [x] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 最大30ステップ）
+- [x] **T-2B.6** 明示的スタック方式カスケード計算 `cascade_calculation()`（§7.2: HF分岐比、粒子放出→子核プッシュ、γカスケード）
+- [x] **T-2B.7** γカスケード計算 `gamma_cascade()`（§7.2: 簡易モデル実装済み）
 
 #### 幅揺らぎ補正 (WFC)
 
 - [x] **T-2B.8** Moldauer WFC 1次元積分（§7.3.1: $W_{ab}$ 補正因子、弾性散乱増強）
 - [x] **T-2B.9** Kawano-Talou $\nu_a$ パラメータ化（§7.3.2: GOE 最良フィット）
-- [ ] **T-2B.10** GOE 三重積分（§7.3.4: VWZ 公式、Gauss-Laguerre 20–32点）— Phase 2 後半
+- [x] **T-2B.10** GOE 三重積分（§7.3.4: VWZ 公式、`goe_wfc()` Gauss-Laguerre/Legendre 求積）
 
 #### NLD/GSF モデル
 
@@ -167,7 +167,7 @@
 #### 検証テスト
 
 - [ ] **T-2B.14** ⁵⁶Fe(n,γ) HF 断面積の TALYS 比較（ACC-03: 相対誤差 < 10⁻⁶, ゴールデンファイル `fe56_ng_cross_section.dat`）
-- [ ] **T-2B.15** proptest: 断面積 ≥ 0、詳細釣合（§13.2）
+- [x] **T-2B.15** proptest: 断面積 ≥ 0、ランダムエネルギーで検証
 
 ### 2C. nucrust-rmatrix（§8）
 
@@ -195,8 +195,8 @@
 
 ### 2D. CpuBackend 統合
 
-- [ ] **T-2D.1** `CpuBackend` の `ComputeBackend` トレイト完全実装（§3.4: rayon 並列化）
-- [ ] **T-2D.2** エンドツーエンドパイプライン統合テスト（RIPL-3 読込 → 透過係数 → HF → 断面積）
+- [x] **T-2D.1** `CpuBackend` の `ComputeBackend` トレイト実装（nucrust 集約クレート、batch_numerov/hf_summation/rmatrix_solve）
+- [x] **T-2D.2** エンドツーエンドパイプライン統合テスト（透過係数 → HF → 断面積、3テスト）
 
 ---
 

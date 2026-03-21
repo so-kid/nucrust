@@ -43,7 +43,9 @@ wide = "0.7"
 
 # Serialization / parsing
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
+
 
 # Error handling
 thiserror = "2"

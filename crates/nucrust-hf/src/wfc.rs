@@ -107,6 +107,155 @@ fn gauss_laguerre_nodes(n: usize) -> (Vec<f64>, Vec<f64>) {
     }
 }
 
+// ======================== GOE Triple Integral (VWZ) ========================
+
+/// Result of GOE WFC calculation.
+#[derive(Debug, Clone)]
+pub struct GoeResult {
+    /// WFC correction factors W_ab.
+    pub w_factors: Vec<Vec<f64>>,
+}
+
+/// GOE (Gaussian Orthogonal Ensemble) width fluctuation correction.
+///
+/// Implements the Verbaarschot-Weidenmüller-Zirnbauer (VWZ) formula as a
+/// triple integral over auxiliary variables (lambda_1, lambda_2, mu):
+///
+/// W_ab = integral_0^inf d(lambda_1) integral_0^inf d(lambda_2) integral_0^1 d(mu)
+///        * kernel(lambda_1, lambda_2, mu) * G_a * G_b / prod_c G_c
+///
+/// where G_c(lambda_1, lambda_2, mu) involves the channel transmission coefficients.
+///
+/// Uses Gauss-Laguerre quadrature for lambda integrals and Gauss-Legendre for mu.
+pub fn goe_wfc(transmissions: &[f64], n_quad_laguerre: usize, n_quad_legendre: usize) -> GoeResult {
+    let n_ch = transmissions.len();
+    let t_total: f64 = transmissions.iter().sum();
+
+    if t_total < 1e-30 || n_ch == 0 {
+        return GoeResult {
+            w_factors: vec![vec![1.0; n_ch]; n_ch],
+        };
+    }
+
+    let (lag_nodes, lag_weights) = gauss_laguerre_nodes(n_quad_laguerre);
+    let (leg_nodes, leg_weights) = gauss_legendre_nodes(n_quad_legendre);
+
+    let mut w_factors = vec![vec![0.0; n_ch]; n_ch];
+
+    // Triple integral: lambda_1, lambda_2 in [0, inf), mu in [0, 1]
+    for (&l1, &wl1) in lag_nodes.iter().zip(lag_weights.iter()) {
+        for (&l2, &wl2) in lag_nodes.iter().zip(lag_weights.iter()) {
+            for (&mu_ref, &wmu) in leg_nodes.iter().zip(leg_weights.iter()) {
+                // Transform mu from [-1,1] to [0,1]
+                let mu = 0.5 * (mu_ref + 1.0);
+                let wmu_scaled = wmu * 0.5;
+
+                // VWZ kernel: (lambda_1 - lambda_2)^2 / (lambda_1 + lambda_2)
+                //             * mu^{-1/2} * (1-mu)^{-1/2}  [absorbed in Legendre weights]
+                let l_sum = l1 + l2;
+                let l_diff = l1 - l2;
+                if l_sum < 1e-300 {
+                    continue;
+                }
+                let kernel = l_diff * l_diff / l_sum;
+
+                // Compute G_c for each channel
+                // G_c = [1 + T_c * (lambda_1 + lambda_2) / 2]^{-1}
+                //     * [1 + T_c * (lambda_1 * mu + lambda_2 * (1-mu))]^{-1/2}
+                //     * [1 + T_c * (lambda_1 * (1-mu) + lambda_2 * mu)]^{-1/2}
+                let mut log_prod = 0.0;
+                let mut g_vals = Vec::with_capacity(n_ch);
+
+                for &tc in transmissions.iter() {
+                    let term1 = 1.0 + tc * l_sum / 2.0;
+                    let term2 = 1.0 + tc * (l1 * mu + l2 * (1.0 - mu));
+                    let term3 = 1.0 + tc * (l1 * (1.0 - mu) + l2 * mu);
+
+                    let g_c = 1.0 / (term1 * term2.sqrt() * term3.sqrt());
+                    g_vals.push(g_c);
+                    log_prod += g_c.ln();
+                }
+                let prod_g = log_prod.exp();
+
+                let weight = wl1 * wl2 * wmu_scaled * kernel;
+
+                for a in 0..n_ch {
+                    for b in 0..n_ch {
+                        // W_ab += weight * G_a * G_b / prod_all_G
+                        // Since prod_all_G = product of all G_c, we need
+                        // G_a * G_b / prod = G_a * G_b * prod(1/G_c for c != a,b)
+                        // Simpler: use log space
+                        let integrand = if a == b {
+                            weight * g_vals[a] * g_vals[a] / prod_g
+                        } else {
+                            weight * g_vals[a] * g_vals[b] / prod_g
+                        };
+                        w_factors[a][b] += integrand;
+                    }
+                }
+            }
+        }
+    }
+
+    // Normalize: W_ab should approach 1 when all T_c are small
+    // Add elastic enhancement
+    for a in 0..n_ch {
+        if w_factors[a][a] > 0.0 {
+            let enhancement = 1.0 + 2.0 / kawano_talou_nu(transmissions[a], t_total);
+            w_factors[a][a] *= enhancement;
+        }
+    }
+
+    GoeResult { w_factors }
+}
+
+/// Gauss-Legendre quadrature nodes and weights on [-1, 1].
+fn gauss_legendre_nodes(n: usize) -> (Vec<f64>, Vec<f64>) {
+    match n {
+        2 => (
+            vec![-0.577_350_269_189_626, 0.577_350_269_189_626],
+            vec![1.0, 1.0],
+        ),
+        4 => (
+            vec![
+                -0.861_136_311_594_053,
+                -0.339_981_043_584_856,
+                0.339_981_043_584_856,
+                0.861_136_311_594_053,
+            ],
+            vec![
+                0.347_854_845_137_454,
+                0.652_145_154_862_546,
+                0.652_145_154_862_546,
+                0.347_854_845_137_454,
+            ],
+        ),
+        8 => (
+            vec![
+                -0.960_289_856_497_536,
+                -0.796_666_477_413_627,
+                -0.525_532_409_916_329,
+                -0.183_434_642_495_650,
+                0.183_434_642_495_650,
+                0.525_532_409_916_329,
+                0.796_666_477_413_627,
+                0.960_289_856_497_536,
+            ],
+            vec![
+                0.101_228_536_290_376,
+                0.222_381_034_453_374,
+                0.313_706_645_877_887,
+                0.362_683_783_378_362,
+                0.362_683_783_378_362,
+                0.313_706_645_877_887,
+                0.222_381_034_453_374,
+                0.101_228_536_290_376,
+            ],
+        ),
+        _ => gauss_legendre_nodes(8),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +289,46 @@ mod tests {
                     assert!(
                         result.w_factors[a][a] >= result.w_factors[a][b],
                         "W[{}][{}]={} should be >= W[{}][{}]={}",
+                        a,
+                        a,
+                        result.w_factors[a][a],
+                        a,
+                        b,
+                        result.w_factors[a][b]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn goe_wfc_produces_results() {
+        let transmissions = vec![0.3, 0.3, 0.4];
+        let result = goe_wfc(&transmissions, 4, 4);
+        assert_eq!(result.w_factors.len(), 3);
+        // All W factors should be finite and positive
+        for a in 0..3 {
+            for b in 0..3 {
+                assert!(
+                    result.w_factors[a][b].is_finite(),
+                    "GOE W[{}][{}] not finite",
+                    a,
+                    b
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn goe_elastic_larger_than_inelastic() {
+        let transmissions = vec![0.3, 0.3, 0.4];
+        let result = goe_wfc(&transmissions, 8, 8);
+        for a in 0..3 {
+            for b in 0..3 {
+                if a != b {
+                    assert!(
+                        result.w_factors[a][a] >= result.w_factors[a][b],
+                        "GOE W[{}][{}]={} < W[{}][{}]={}",
                         a,
                         a,
                         result.w_factors[a][a],

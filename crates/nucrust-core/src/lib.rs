@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod channel;
 pub mod collision_matrix;
+pub mod coupled_channel;
 pub mod cross_section;
 pub mod energy;
 pub mod error;
@@ -12,10 +13,14 @@ pub mod spline;
 pub mod traits;
 pub mod transmission;
 pub mod units;
+pub mod wigner;
 
 pub use backend::{ComputeBackend, GsfModelParams, NldModelParams, ToDeviceParams};
 pub use channel::Channel;
 pub use collision_matrix::CollisionMatrix;
+pub use coupled_channel::{
+    CoupledState, CoupledTransmission, DeformationParams, RotationalBand, TransmissionOutput,
+};
 pub use cross_section::{CrossSection, PartialCrossSection};
 pub use energy::EnergyGrid;
 pub use error::CoreError;

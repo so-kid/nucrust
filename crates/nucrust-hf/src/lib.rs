@@ -7,4 +7,4 @@ pub mod wfc;
 pub use gsf::{EnhancedGeneralizedLorentzian, StandardLorentzian};
 pub use hf::{hauser_feshbach, HfCalculation};
 pub use nld::{BackShiftedFermiGas, ConstantTemperature, GilbertCameron};
-pub use wfc::{moldauer_wfc, MoldauerResult};
+pub use wfc::{goe_wfc, moldauer_wfc, GoeResult, MoldauerResult};
