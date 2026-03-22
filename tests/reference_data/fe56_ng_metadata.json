@@ -1,13 +1,17 @@
 {
-  "source": "placeholder",
+  "source": "TALYS-2.2 (Koning-Delaroche OMP, default NLD/GSF)",
+  "talys_version": "2.2",
   "target": "Fe-56",
   "projectile": "n",
   "reaction": "(n,gamma)",
+  "omp": "Koning-Delaroche (2003) global nucleon",
+  "nld": "TALYS default (Gilbert-Cameron composite)",
+  "gsf": "TALYS default (Kopecky-Uhl EGLO)",
   "energy_range_mev": [
-    0.001,
-    20.000000000000004
+    0.001018033,
+    20.36066
   ],
-  "n_energies": 100,
-  "l_max": 30,
-  "notes": "Placeholder data based on systematics. Replace with actual TALYS output."
+  "n_energies_transmission": 68,
+  "n_energies_cross_section": 100,
+  "l_max": 17
 }

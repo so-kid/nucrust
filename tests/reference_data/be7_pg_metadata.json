@@ -1,0 +1,33 @@
+{
+  "source": "Polynomial + resonance fit to published R-matrix analyses",
+  "reaction": "Be-7(p,gamma)B-8",
+  "s_factor_zero": {
+    "value": 20.8,
+    "stat_error": 0.7,
+    "syst_error": 1.0,
+    "unit": "eV*b"
+  },
+  "polynomial_coefficients": {
+    "a1": -1.85,
+    "a2": 1.2,
+    "a3": 0.5,
+    "unit": "MeV^-n"
+  },
+  "resonance": {
+    "energy_mev": 0.632,
+    "j_pi": "1+",
+    "gamma_total_mev": 0.0356,
+    "gamma_gamma_mev": 0.0006,
+    "s_peak_ev_b": 700.0
+  },
+  "n_energies": 90,
+  "energy_range_cm_mev": [
+    0.01,
+    2.95
+  ],
+  "references": [
+    "Junghans et al., Phys. Rev. C 68 (2003) 065803",
+    "Descouvemont et al., At. Data Nucl. Data Tables 88 (2004) 203",
+    "Cyburt, Phys. Rev. C 70 (2004) 035801"
+  ]
+}
