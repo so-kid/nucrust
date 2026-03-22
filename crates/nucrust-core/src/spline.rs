@@ -5,6 +5,7 @@ use crate::CoreError;
 /// Boundary condition: second derivative = 0 at both endpoints.
 /// Required for MACS calculation where Gauss-Laguerre quadrature nodes
 /// do not generally coincide with user-defined energy grid points.
+#[derive(Debug, Clone)]
 pub struct CubicSpline {
     x: Vec<f64>,
     y: Vec<f64>,

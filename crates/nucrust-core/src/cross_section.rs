@@ -5,6 +5,7 @@ use crate::{Channel, EnergyGrid};
 /// All values in millibarns (mb).
 #[derive(Debug, Clone)]
 pub struct CrossSection {
+    /// Energy grid for the tabulated cross sections.
     pub energy: EnergyGrid,
     /// Total cross section (mb).
     pub sigma_total: Vec<f64>,
@@ -19,6 +20,7 @@ pub struct CrossSection {
 /// Partial cross section for a specific exit channel.
 #[derive(Debug, Clone)]
 pub struct PartialCrossSection {
+    /// The exit channel this partial cross section corresponds to.
     pub channel: Channel,
     /// Cross section values (mb), corresponding to the parent CrossSection's energy grid.
     pub sigma: Vec<f64>,

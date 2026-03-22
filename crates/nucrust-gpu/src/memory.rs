@@ -11,10 +11,12 @@ pub struct GpuMemoryPool {
 }
 
 impl GpuMemoryPool {
+    /// Create a new memory pool with the given byte budget.
     pub fn new(stream: Arc<CudaStream>, max_bytes: usize) -> Self {
         Self { stream, max_bytes }
     }
 
+    /// Allocate a zero-initialized f64 buffer of `n` elements on GPU.
     pub fn alloc_f64(&self, n: usize) -> Result<CudaSlice<f64>, CoreError> {
         let bytes = n * std::mem::size_of::<f64>();
         if bytes > self.max_bytes {
@@ -31,6 +33,7 @@ impl GpuMemoryPool {
             })
     }
 
+    /// Return the maximum allocation budget in bytes.
     pub fn max_bytes(&self) -> usize {
         self.max_bytes
     }

@@ -7,6 +7,7 @@ use crate::fixed_field::*;
 /// Fission barrier parameters for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct FissionBarrier {
+    /// Target nuclide.
     pub nuclide: Nuclide,
     /// Height of the first (inner) barrier (MeV).
     pub barrier_a: f64,

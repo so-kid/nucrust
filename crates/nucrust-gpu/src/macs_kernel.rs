@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 const MACS_KERNEL_SRC: &str = include_str!("../../../kernels/macs_integral.cu");
 
-/// Gauss-Laguerre 8-point nodes and weights.
+/// Gauss-Laguerre 8-point quadrature nodes.
 const GL8_NODES: [f64; 8] = [
     0.170_279_632_305,
     0.903_701_776_799,
@@ -17,6 +17,7 @@ const GL8_NODES: [f64; 8] = [
     15.740_678_641_928,
     22.863_131_736_889,
 ];
+/// Gauss-Laguerre 8-point quadrature weights.
 const GL8_WEIGHTS: [f64; 8] = [
     0.369_188_589_342,
     0.418_786_780_814,

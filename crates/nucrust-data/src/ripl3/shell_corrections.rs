@@ -7,6 +7,7 @@ use crate::fixed_field::*;
 /// Shell correction entry for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct ShellCorrection {
+    /// Target nuclide.
     pub nuclide: Nuclide,
     /// Shell correction energy (MeV).
     pub shell_correction: f64,

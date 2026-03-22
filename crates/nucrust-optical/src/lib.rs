@@ -1,3 +1,12 @@
+//! Optical model potentials and Numerov integration for nuclear transmission coefficients.
+//!
+//! This crate provides spherical and deformed optical model potentials (Koning-Delaroche,
+//! McFadden-Satchler, Avrigeanu-2014), Numerov and Johnson log-derivative solvers for the
+//! radial Schrodinger equation, and routines to compute transmission coefficients
+//! $T_{\ell j}(E)$ for use in Hauser-Feshbach statistical model calculations.
+
+#![warn(missing_docs)]
+
 pub mod cc_transmission;
 pub mod deformation;
 pub mod johnson_logderiv;

@@ -11,6 +11,7 @@ use crate::fixed_field::*;
 /// Phenomenological level density parameters for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct LevelDensityParams {
+    /// Target nuclide.
     pub nuclide: Nuclide,
     /// Level density parameter a (1/MeV).
     pub a: f64,
@@ -99,7 +100,9 @@ pub struct HfbDensityEntry {
 /// HFB microscopic level density table for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct HfbDensityTable {
+    /// Target nuclide.
     pub nuclide: Nuclide,
+    /// Density entries at various (U, J, parity) points.
     pub entries: Vec<HfbDensityEntry>,
 }
 

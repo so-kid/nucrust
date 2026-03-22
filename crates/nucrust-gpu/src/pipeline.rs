@@ -10,15 +10,15 @@ use crate::hf_kernel::{gpu_hf_summation, GpuHfParams};
 use crate::macs_kernel::gpu_macs_integrate;
 use crate::numerov::{gpu_batch_numerov, GpuNumerovParams};
 
-/// Pipeline configuration.
+/// Full Numerov->HF->MACS pipeline configuration.
 pub struct PipelineConfig {
-    /// Numerov parameters (potential depths, geometry, etc.)
+    /// Numerov integration parameters (potential depths, geometry).
     pub numerov: GpuNumerovParams,
-    /// HF parameters (J_max, Q-value, NLD/GSF model params)
+    /// Hauser-Feshbach parameters (J_max, Q-value, NLD/GSF models).
     pub hf: GpuHfParams,
-    /// Maximum partial wave
+    /// Maximum orbital angular momentum l.
     pub max_l: u32,
-    /// Temperature grid for MACS (GK)
+    /// Temperature grid for MACS integration (GK).
     pub temperatures: Vec<f64>,
 }
 

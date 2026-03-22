@@ -4,6 +4,7 @@
 //!         Ignatyuk, HFB table interpolation.
 
 use nucrust_core::spin::Parity;
+use nucrust_core::spline::CubicSpline;
 use nucrust_core::traits::LevelDensity;
 use nucrust_core::Nuclide;
 
@@ -216,6 +217,150 @@ impl LevelDensity for Ignatyuk {
     }
 }
 
+// ============================================================================
+// HFB Table Interpolation Model
+// ============================================================================
+
+/// Hartree-Fock-Bogoliubov (HFB) tabulated level density model.
+///
+/// Interpolates pre-computed ρ(U, J) tables from microscopic HFB calculations.
+/// Uses cubic spline interpolation along excitation energy axis for each spin,
+/// then linear interpolation in spin.
+///
+/// Storage: `densities[i_spin * n_excitations + i_excitation]` (row = spin).
+#[derive(Debug, Clone)]
+pub struct HfbTableInterp {
+    /// Spin values (half-integer or integer), strictly increasing.
+    spins: Vec<f64>,
+    /// Cubic splines, one per spin value, interpolating along excitation energy.
+    splines: Vec<CubicSpline>,
+}
+
+impl HfbTableInterp {
+    /// Construct from tabulated data.
+    ///
+    /// - `excitations`: energy grid (MeV), length `n_e`.
+    /// - `spins`: spin grid, length `n_j`.
+    /// - `densities`: flattened ρ(J, U) table, length `n_j * n_e`,
+    ///   stored as `densities[i_j * n_e + i_e]`.
+    ///
+    /// All density values should be ≥ 0. The function takes log10 internally
+    /// for interpolation stability, using a floor of 1e-30 for zero/negative values.
+    pub fn new(
+        excitations: Vec<f64>,
+        spins: Vec<f64>,
+        densities: &[f64],
+    ) -> Result<Self, nucrust_core::CoreError> {
+        let n_e = excitations.len();
+        let n_j = spins.len();
+
+        if densities.len() != n_j * n_e {
+            return Err(nucrust_core::CoreError::InvalidParameter {
+                name: "densities",
+                value: densities.len() as f64,
+                reason: "length must equal n_spins * n_excitations",
+            });
+        }
+
+        if n_e < 2 || n_j < 2 {
+            return Err(nucrust_core::CoreError::InvalidParameter {
+                name: "grid_size",
+                value: n_e.min(n_j) as f64,
+                reason: "need at least 2 excitation energies and 2 spin values",
+            });
+        }
+
+        // Build one cubic spline per spin value (interpolating in excitation energy)
+        // Interpolate log10(rho) for numerical stability
+        let mut splines = Vec::with_capacity(n_j);
+        for i_j in 0..n_j {
+            let row_start = i_j * n_e;
+            let log_rho: Vec<f64> = densities[row_start..row_start + n_e]
+                .iter()
+                .map(|&rho| rho.max(1e-30).log10())
+                .collect();
+            let spline = CubicSpline::natural(&excitations, &log_rho)?;
+            splines.push(spline);
+        }
+
+        Ok(Self { spins, splines })
+    }
+
+    /// Interpolate ρ(U, J) at arbitrary excitation and spin.
+    fn interpolate(&self, excitation: f64, spin: f64) -> f64 {
+        if excitation <= 0.0 {
+            return 0.0;
+        }
+
+        let n_j = self.spins.len();
+
+        // Find bracketing spin indices
+        if spin <= self.spins[0] {
+            let log_rho = self.splines[0].evaluate(excitation);
+            return 10.0_f64.powf(log_rho).max(0.0);
+        }
+        if spin >= self.spins[n_j - 1] {
+            let log_rho = self.splines[n_j - 1].evaluate(excitation);
+            return 10.0_f64.powf(log_rho).max(0.0);
+        }
+
+        // Binary search for spin bracket
+        let idx = self
+            .spins
+            .partition_point(|&s| s < spin)
+            .saturating_sub(1)
+            .min(n_j - 2);
+
+        let s0 = self.spins[idx];
+        let s1 = self.spins[idx + 1];
+        let t = (spin - s0) / (s1 - s0);
+
+        // Interpolate log10(rho) at each bracketing spin, then linear interp in spin
+        let log_rho0 = self.splines[idx].evaluate(excitation);
+        let log_rho1 = self.splines[idx + 1].evaluate(excitation);
+        let log_rho = log_rho0 + t * (log_rho1 - log_rho0);
+
+        10.0_f64.powf(log_rho).max(0.0)
+    }
+}
+
+impl LevelDensity for HfbTableInterp {
+    fn rho(&self, _nuclide: &Nuclide, excitation: f64, spin: f64, _parity: Parity) -> f64 {
+        // Factor 0.5 for parity equipartition (table gives total for both parities)
+        0.5 * self.interpolate(excitation, spin)
+    }
+
+    fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {
+        if excitation <= 0.0 {
+            return 0.0;
+        }
+        // Sum (2J+1) * rho(U, J) over tabulated spins using trapezoidal rule
+        let n_j = self.spins.len();
+        let mut total = 0.0;
+        for i in 0..n_j {
+            let j = self.spins[i];
+            let rho_j = self.interpolate(excitation, j);
+            let weight = 2.0 * j + 1.0;
+            // Trapezoidal weight for spin integration
+            let dj = if n_j == 1 {
+                1.0
+            } else if i == 0 {
+                (self.spins[1] - self.spins[0]) / 2.0
+            } else if i == n_j - 1 {
+                (self.spins[n_j - 1] - self.spins[n_j - 2]) / 2.0
+            } else {
+                (self.spins[i + 1] - self.spins[i - 1]) / 2.0
+            };
+            total += weight * rho_j * dj;
+        }
+        total
+    }
+
+    fn name(&self) -> &str {
+        "HFB Table Interpolation"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +463,121 @@ mod tests {
             "sum of spin distribution = {}",
             sum
         );
+    }
+
+    // ========================================================================
+    // HfbTableInterp tests
+    // ========================================================================
+
+    /// Create a synthetic BSFG-like HFB table for testing.
+    fn make_test_hfb_table() -> HfbTableInterp {
+        let excitations: Vec<f64> = (0..20).map(|i| i as f64 * 0.5 + 0.5).collect(); // 0.5 to 10.0 MeV
+        let spins: Vec<f64> = (0..10).map(|j| j as f64).collect(); // J = 0..9
+        let n_e = excitations.len();
+        let n_j = spins.len();
+
+        // Generate densities using BSFG-like formula
+        let a = 6.0;
+        let delta = -0.5;
+        let mut densities = vec![0.0; n_j * n_e];
+        for (i_j, &j) in spins.iter().enumerate() {
+            for (i_e, &e) in excitations.iter().enumerate() {
+                let u = (e - delta).max(0.01);
+                let sigma_sq = 0.0888 * 56.0_f64.powf(2.0 / 3.0) * (a * u).sqrt();
+                let rho_tot = (2.0 * (a * u).sqrt()).exp()
+                    / (12.0
+                        * 2.0_f64.sqrt()
+                        * sigma_sq.sqrt().max(0.01)
+                        * a.powf(0.25)
+                        * u.powf(1.25));
+                let spin_dist = spin_distribution(j, sigma_sq);
+                densities[i_j * n_e + i_e] = rho_tot * spin_dist;
+            }
+        }
+
+        HfbTableInterp::new(excitations, spins, &densities).unwrap()
+    }
+
+    #[test]
+    fn hfb_table_positive_density() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        let rho = hfb.rho(&nuclide, 5.0, 2.0, Parity::Positive);
+        assert!(rho > 0.0, "HFB rho = {}", rho);
+    }
+
+    #[test]
+    fn hfb_table_increases_with_energy() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        let rho1 = hfb.rho_total(&nuclide, 3.0);
+        let rho2 = hfb.rho_total(&nuclide, 5.0);
+        assert!(
+            rho2 > rho1,
+            "rho(5 MeV) = {} should > rho(3 MeV) = {}",
+            rho2,
+            rho1
+        );
+    }
+
+    #[test]
+    fn hfb_table_interpolates_between_grid_points() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        // At a grid point
+        let rho_grid = hfb.rho(&nuclide, 5.0, 2.0, Parity::Positive);
+        // Between grid points
+        let rho_interp = hfb.rho(&nuclide, 5.25, 2.0, Parity::Positive);
+        // Both should be positive and finite
+        assert!(rho_grid > 0.0 && rho_grid.is_finite());
+        assert!(rho_interp > 0.0 && rho_interp.is_finite());
+    }
+
+    #[test]
+    fn hfb_table_spin_interpolation() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        // Interpolate between spin grid points (J=2.5, between J=2 and J=3)
+        let rho = hfb.rho(&nuclide, 5.0, 2.5, Parity::Positive);
+        let rho_2 = hfb.rho(&nuclide, 5.0, 2.0, Parity::Positive);
+        let rho_3 = hfb.rho(&nuclide, 5.0, 3.0, Parity::Positive);
+        // Should be between the two bracketing values (or close, due to log interp)
+        assert!(rho > 0.0 && rho.is_finite());
+        // In log space, interpolated value should be between rho_2 and rho_3
+        let log_rho = rho.log10();
+        let log_min = rho_2.log10().min(rho_3.log10());
+        let log_max = rho_2.log10().max(rho_3.log10());
+        assert!(
+            log_rho >= log_min - 0.1 && log_rho <= log_max + 0.1,
+            "log10(rho) = {} not between {} and {}",
+            log_rho,
+            log_min,
+            log_max
+        );
+    }
+
+    #[test]
+    fn hfb_table_rho_total_positive() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        let rho_tot = hfb.rho_total(&nuclide, 5.0);
+        assert!(rho_tot > 0.0, "rho_total = {}", rho_tot);
+    }
+
+    #[test]
+    fn hfb_table_zero_at_zero_excitation() {
+        let hfb = make_test_hfb_table();
+        let nuclide = fe56();
+        let rho = hfb.rho(&nuclide, 0.0, 0.0, Parity::Positive);
+        assert!(rho.abs() < 1e-10);
+    }
+
+    #[test]
+    fn hfb_table_invalid_dimensions() {
+        let excitations = vec![1.0, 2.0, 3.0];
+        let spins = vec![0.0, 1.0];
+        let densities = vec![1.0; 5]; // Wrong size (should be 6)
+        let result = HfbTableInterp::new(excitations, spins, &densities);
+        assert!(result.is_err());
     }
 }

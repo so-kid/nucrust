@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 /// Parity quantum number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Parity {
+    /// Positive parity (+).
     Positive,
+    /// Negative parity (-).
     Negative,
 }
 
@@ -47,10 +49,12 @@ impl std::ops::Mul for Parity {
 pub struct SpinParity {
     /// 2*J (e.g., J=5/2 -> two_j=5). i32 to support subtraction in triangle conditions.
     pub two_j: i32,
+    /// Parity quantum number.
     pub parity: Parity,
 }
 
 impl SpinParity {
+    /// Create a new `SpinParity` with validation (two_j must be non-negative).
     pub fn new(two_j: i32, parity: Parity) -> Result<Self, CoreError> {
         if two_j < 0 {
             return Err(CoreError::InvalidParameter {

@@ -34,6 +34,7 @@ pub struct CascadeResult {
     pub gamma_spectrum: Vec<(f64, f64)>,
     /// Final population of ground and isomeric states.
     pub ground_state_population: f64,
+    /// Population of each isomeric state as (nuclide, population) pairs.
     pub isomer_populations: Vec<(Nuclide, f64)>,
 }
 

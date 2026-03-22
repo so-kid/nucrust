@@ -6,10 +6,15 @@ use crate::Channel;
 /// Electromagnetic multipole type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Multipole {
+    /// Electric dipole.
     E1,
+    /// Magnetic dipole.
     M1,
+    /// Electric quadrupole.
     E2,
+    /// Magnetic quadrupole.
     M2,
+    /// Electric octupole.
     E3,
 }
 

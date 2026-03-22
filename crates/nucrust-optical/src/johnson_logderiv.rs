@@ -50,7 +50,7 @@ pub struct LogDerivResult {
 /// Propagate the log-derivative matrix from r_min to r_max.
 ///
 /// `w_matrix_fn` returns the N×N W-matrix (coupling + centrifugal + potential)
-/// at radius r, as a flat Vec<Complex64> in row-major order.
+/// at radius r, as a flat `Vec<Complex64>` in row-major order.
 ///
 /// `l_values`: orbital angular momentum for each channel (for initial conditions).
 /// If None, uses l=0 for all channels.

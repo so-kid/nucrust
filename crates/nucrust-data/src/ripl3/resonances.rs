@@ -7,6 +7,7 @@ use crate::fixed_field::*;
 /// Resonance parameter entry for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct ResonanceParams {
+    /// Target nuclide.
     pub nuclide: Nuclide,
     /// Average s-wave resonance spacing D0 (eV).
     pub d0: Option<f64>,

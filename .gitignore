@@ -11,6 +11,12 @@ Cargo.lock
 # OS
 .DS_Store
 
+# Cargo local config (environment-specific paths)
+.cargo/config.toml
+
+# mdbook build output
+book/build/
+
 # Python (scripts/)
 scripts/.venv/
 scripts/__pycache__/

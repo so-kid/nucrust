@@ -103,7 +103,7 @@
 #### TOML 設定・HDF5
 
 - [x] **T-1C.14** TOML 設定スキーマ（§5.6: `JobConfig` + serde Deserialize）
-- [ ] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5_io` コード実装済み、HDF5ライブラリ依存のビルド・テスト未実施）
+- [x] **T-1C.15** HDF5 入出力（§5.5: feature `hdf5_io` ビルド・テスト完了、hdf5@1.10 必須、ラウンドトリップテスト3件追加）
 
 ---
 
@@ -277,7 +277,7 @@
 
 ### 4E. ドキュメント・リリース
 
-- [ ] **T-4E.1** rustdoc 100%（public API）
-- [ ] **T-4E.2** mdbook ユーザーガイド（`book/`）
-- [ ] **T-4E.3** CHANGELOG.md 作成
-- [ ] **T-4E.4** REACLIB 出力が pynucastro で読み込み可能であることの受け入れテスト
+- [x] **T-4E.1** rustdoc 100%（public API）— 全クレートに `#![warn(missing_docs)]` 追加、全 public item にドキュメント付与、rustdoc 警告ゼロ
+- [x] **T-4E.2** mdbook ユーザーガイド（`book/`）— 16章構成、Installation/Quick Start/Configuration/Concepts/HF/R-matrix/Astro/GPU/CLI/Python/Data Formats/Architecture
+- [x] **T-4E.3** CHANGELOG.md 作成 — Keep a Changelog 形式、Phase 0-4 全変更をカバー
+- [x] **T-4E.4** REACLIB 出力が pynucastro で読み込み可能であることの受け入れテスト — `to_reaclib_string()` シリアライズ実装、ラウンドトリップ・フィールド幅・複数Chapter・評価一貫性テスト5件

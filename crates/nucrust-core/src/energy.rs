@@ -63,16 +63,19 @@ impl EnergyGrid {
         Ok(Self { values })
     }
 
+    /// Number of energy points.
     #[inline]
     pub fn len(&self) -> usize {
         self.values.len()
     }
 
+    /// Whether the grid contains no points.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 
+    /// View the energy values as a slice (MeV).
     #[inline]
     pub fn as_slice(&self) -> &[f64] {
         &self.values

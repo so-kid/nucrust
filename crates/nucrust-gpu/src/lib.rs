@@ -4,6 +4,8 @@
 //!
 //! Enable with: `cargo build -p nucrust-gpu --features cuda`
 
+#![warn(missing_docs)]
+
 #[cfg(feature = "cuda")]
 pub mod backend;
 #[cfg(feature = "cuda")]

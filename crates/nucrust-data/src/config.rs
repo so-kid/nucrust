@@ -6,28 +6,42 @@ use nucrust_core::CoreError;
 /// Job configuration (deserialized from TOML).
 #[derive(Debug, Deserialize)]
 pub struct JobConfig {
+    /// Target nuclide specification (Z, A).
     pub target: TargetConfig,
+    /// Projectile identifier (e.g., `"n"`, `"p"`, `"a"`).
     pub projectile: String,
+    /// Energy grid specification.
     pub energy: EnergyConfig,
+    /// Physics model selections.
     #[serde(default)]
     pub models: ModelConfig,
+    /// Output format and path settings.
     #[serde(default)]
     pub output: OutputConfig,
+    /// Compute backend settings (CPU/GPU).
     #[serde(default)]
     pub backend: BackendConfig,
 }
 
+/// Target nuclide specification.
 #[derive(Debug, Deserialize)]
 pub struct TargetConfig {
+    /// Proton number.
     pub z: u16,
+    /// Mass number.
     pub a: u16,
 }
 
+/// Energy grid configuration.
 #[derive(Debug, Deserialize)]
 pub struct EnergyConfig {
+    /// Minimum energy (MeV).
     pub min: f64,
+    /// Maximum energy (MeV).
     pub max: f64,
+    /// Number of energy points.
     pub points: usize,
+    /// Grid spacing type (`"log"` or `"linear"`). Defaults to `"log"`.
     #[serde(default = "default_log")]
     pub spacing: String,
 }
@@ -36,14 +50,19 @@ fn default_log() -> String {
     "log".to_string()
 }
 
+/// Physics model selections.
 #[derive(Debug, Deserialize)]
 pub struct ModelConfig {
+    /// Optical model potential name (default: `"koning-delaroche"`).
     #[serde(default = "default_omp")]
     pub omp: String,
+    /// Nuclear level density model name (default: `"gilbert-cameron"`).
     #[serde(default = "default_nld")]
     pub nld: String,
+    /// Gamma-ray strength function model name (default: `"eglo"`).
     #[serde(default = "default_gsf")]
     pub gsf: String,
+    /// Path to the RIPL-3 data directory (optional).
     pub ripl3_path: Option<PathBuf>,
 }
 
@@ -68,10 +87,13 @@ impl Default for ModelConfig {
     }
 }
 
+/// Output configuration.
 #[derive(Debug, Deserialize)]
 pub struct OutputConfig {
+    /// Output format(s) (default: `["json"]`). Supported: `"json"`, `"table"`, `"hdf5"`.
     #[serde(default = "default_formats")]
     pub format: Vec<String>,
+    /// Output directory path (default: `"output"`).
     #[serde(default = "default_output_path")]
     pub path: PathBuf,
 }
@@ -92,10 +114,13 @@ impl Default for OutputConfig {
     }
 }
 
+/// Compute backend configuration.
 #[derive(Debug, Deserialize)]
 pub struct BackendConfig {
+    /// Compute backend (`"cpu"` or `"gpu"`). Defaults to `"cpu"`.
     #[serde(default = "default_cpu")]
     pub compute: String,
+    /// GPU device index (0-based). Defaults to `0`.
     #[serde(default)]
     pub gpu_device: u32,
 }

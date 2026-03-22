@@ -1,4 +1,5 @@
 #![allow(clippy::useless_conversion)] // PyO3 macros generate these
+#![warn(missing_docs)]
 //! Python bindings for nucrust via PyO3.
 //!
 //! Provides:
@@ -260,6 +261,7 @@ fn calc_hf_cross_section(
         nld: &nld,
         gsf: &gsf,
         config: &hf_config,
+        discrete_levels: None,
     };
 
     let results = nucrust_hf::hf::hauser_feshbach(&calc)

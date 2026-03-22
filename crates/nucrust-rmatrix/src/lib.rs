@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! R-matrix theory implementation for nuclear reaction cross sections.
 //!
 //! This crate implements the Lane-Thomas R-matrix formalism, Brune alternative

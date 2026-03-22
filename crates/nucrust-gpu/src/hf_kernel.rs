@@ -8,13 +8,21 @@ const HF_KERNEL_SRC: &str = include_str!("../../../kernels/hf_summation.cu");
 
 /// Parameters for GPU HF summation.
 pub struct GpuHfParams {
+    /// Maximum 2J value for spin summation.
     pub two_j_max: i32,
+    /// Reaction Q-value (MeV).
     pub q_value: f64,
+    /// Level density parameter a (MeV^{-1}).
     pub nld_a: f64,
+    /// Nuclear temperature T (MeV).
     pub nld_t: f64,
+    /// GDR centroid energy (MeV).
     pub gsf_e_gdr: f64,
+    /// GDR width (MeV).
     pub gsf_gamma_gdr: f64,
+    /// GDR peak cross section (mb).
     pub gsf_sigma_gdr: f64,
+    /// hbar^2 / (2 * mu) in MeV*fm^2.
     pub hbar2_over_2mu: f64,
 }
 

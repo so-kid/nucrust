@@ -219,6 +219,7 @@ pub struct DeformedKoningDelaroche {
 }
 
 impl DeformedKoningDelaroche {
+    /// Creates a new deformed Koning-Delaroche potential with the given deformation and rotational band.
     pub fn new(deformation: DeformationParams, band: RotationalBand) -> Self {
         Self { deformation, band }
     }
@@ -259,7 +260,7 @@ pub fn volume_ws_derivative(r: f64, v_depth: f64, r0: f64, a: f64, a_target: f64
 ///
 /// where E_c = E - ε_c (kinetic energy in channel c, accounting for excitation energy).
 ///
-/// Returns an N×N matrix as a flat Vec<Complex64> in row-major order.
+/// Returns an N×N matrix as a flat `Vec<Complex64>` in row-major order.
 pub fn build_w_matrix(
     cc_system: &CoupledChannelSystem,
     spherical_potential: &dyn OpticalPotential,

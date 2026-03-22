@@ -7,7 +7,9 @@ use crate::EnergyGrid;
 /// where j_index: 0 = l-1/2, 1 = l+1/2.
 #[derive(Debug, Clone)]
 pub struct TransmissionCoeffs {
+    /// Energy grid for the tabulated coefficients.
     pub energy: EnergyGrid,
+    /// Maximum orbital angular momentum included.
     pub l_max: u32,
     /// Flat array: `[l0_j0_e0, l0_j0_e1, ..., l0_j1_e0, ..., l1_j0_e0, ...]`
     pub data: Vec<f64>,

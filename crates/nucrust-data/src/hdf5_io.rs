@@ -132,3 +132,130 @@ fn read_f64_dataset(file: &H5File, name: &str) -> Result<Vec<f64>, CoreError> {
         .map_err(|e| CoreError::Io(std::io::Error::other(e.to_string())))?
         .to_vec())
 }
+
+#[cfg(all(test, feature = "hdf5_io"))]
+mod tests {
+    use super::*;
+    use nucrust_core::{CrossSection, EnergyGrid, ReactionRate};
+    use std::path::PathBuf;
+
+    fn temp_h5_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join("nucrust_hdf5_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join(name)
+    }
+
+    #[test]
+    fn cross_section_roundtrip() {
+        let path = temp_h5_path("xs_roundtrip.h5");
+        let energies = EnergyGrid::from_values(vec![0.1, 0.5, 1.0, 5.0, 10.0]).unwrap();
+        let xs = CrossSection {
+            energy: energies,
+            sigma_total: vec![100.0, 50.0, 30.0, 10.0, 5.0],
+            sigma_elastic: vec![60.0, 30.0, 18.0, 6.0, 3.0],
+            sigma_reaction: vec![40.0, 20.0, 12.0, 4.0, 2.0],
+            partial: vec![],
+        };
+
+        write_cross_section(&path, &xs).unwrap();
+        let loaded = read_cross_section(&path).unwrap();
+
+        assert_eq!(loaded.energy.len(), 5);
+        for i in 0..5 {
+            assert!(
+                (loaded.sigma_total[i] - xs.sigma_total[i]).abs() < 1e-12,
+                "sigma_total[{}]: {} vs {}",
+                i,
+                loaded.sigma_total[i],
+                xs.sigma_total[i]
+            );
+            assert!(
+                (loaded.sigma_elastic[i] - xs.sigma_elastic[i]).abs() < 1e-12,
+                "sigma_elastic[{}]",
+                i
+            );
+            assert!(
+                (loaded.sigma_reaction[i] - xs.sigma_reaction[i]).abs() < 1e-12,
+                "sigma_reaction[{}]",
+                i
+            );
+        }
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn reaction_rates_roundtrip() {
+        let path = temp_h5_path("rates_roundtrip.h5");
+        let rates = vec![ReactionRate {
+            temperatures: vec![0.1, 0.5, 1.0, 3.0],
+            na_sigma_v: vec![1.0e5, 2.0e6, 5.0e7, 1.0e8],
+            macs: Some(vec![100.0, 200.0, 300.0, 400.0]),
+            s_factor: None,
+            sef: Some(vec![1.0, 1.01, 1.05, 1.1]),
+        }];
+
+        write_reaction_rates(&path, &rates).unwrap();
+
+        // Verify file exists and is readable
+        let file = H5File::open(&path).unwrap();
+        let group = file.group("rate_0").unwrap();
+        let temps: Vec<f64> = group
+            .dataset("temperatures")
+            .unwrap()
+            .read_1d()
+            .unwrap()
+            .to_vec();
+        assert_eq!(temps.len(), 4);
+        assert!((temps[0] - 0.1).abs() < 1e-12);
+
+        let na_sv: Vec<f64> = group
+            .dataset("na_sigma_v")
+            .unwrap()
+            .read_1d()
+            .unwrap()
+            .to_vec();
+        assert!((na_sv[2] - 5.0e7).abs() < 1e-3);
+
+        // MACS should be present
+        let macs: Vec<f64> = group.dataset("macs").unwrap().read_1d().unwrap().to_vec();
+        assert_eq!(macs.len(), 4);
+
+        // SEF should be present
+        let sef: Vec<f64> = group.dataset("sef").unwrap().read_1d().unwrap().to_vec();
+        assert!((sef[3] - 1.1).abs() < 1e-12);
+
+        // s_factor should NOT be present
+        assert!(group.dataset("s_factor").is_err());
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn cross_section_overwrite() {
+        let path = temp_h5_path("xs_overwrite.h5");
+        let energies = EnergyGrid::from_values(vec![1.0, 2.0]).unwrap();
+        let xs1 = CrossSection {
+            energy: energies.clone(),
+            sigma_total: vec![10.0, 20.0],
+            sigma_elastic: vec![5.0, 10.0],
+            sigma_reaction: vec![5.0, 10.0],
+            partial: vec![],
+        };
+        write_cross_section(&path, &xs1).unwrap();
+
+        let xs2 = CrossSection {
+            energy: energies,
+            sigma_total: vec![99.0, 88.0],
+            sigma_elastic: vec![1.0, 2.0],
+            sigma_reaction: vec![98.0, 86.0],
+            partial: vec![],
+        };
+        write_cross_section(&path, &xs2).unwrap();
+
+        let loaded = read_cross_section(&path).unwrap();
+        assert!((loaded.sigma_total[0] - 99.0).abs() < 1e-12);
+
+        std::fs::remove_file(&path).ok();
+    }
+}

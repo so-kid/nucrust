@@ -1,3 +1,10 @@
+//! GPU-accelerated nuclear reaction rate calculation framework.
+//!
+//! Re-exports all nucrust sub-crates and provides compute backends
+//! (`CpuBackend`, and `GpuBackend` via `nucrust-gpu`).
+
+#![warn(missing_docs)]
+
 pub mod cpu_backend;
 
 pub use cpu_backend::CpuBackend;

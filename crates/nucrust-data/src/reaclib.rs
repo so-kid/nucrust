@@ -4,9 +4,13 @@ use nucrust_core::CoreError;
 /// REACLIB rate type classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateType {
+    /// Non-resonant rate (flag `"n"`).
     NonResonant,
+    /// Resonant rate (flag `"r"`).
     Resonant,
+    /// Weak interaction rate (flag `"w"`).
     Weak,
+    /// Other/unclassified rate type.
     Other,
 }
 
@@ -32,6 +36,56 @@ pub struct ReaclibEntry {
 }
 
 impl ReaclibEntry {
+    /// Serialize this entry to REACLIB R1 format (3 lines).
+    ///
+    /// Produces the standard 3-line format compatible with pynucastro, JINA REACLIB,
+    /// and reaction network codes (SkyNet, WinNet, XNet).
+    pub fn to_reaclib_string(&self) -> String {
+        // Build the 6 nuclide fields (5 chars each, left-aligned)
+        let (n_react, n_prod) = chapter_topology(self.chapter);
+        let mut nuclides: [String; 6] = Default::default();
+        for (i, r) in self.reactants.iter().enumerate().take(n_react) {
+            nuclides[i] = r.clone();
+        }
+        for (i, p) in self.products.iter().enumerate().take(n_prod) {
+            nuclides[n_react + i] = p.clone();
+        }
+
+        let flag = match self.rate_type {
+            RateType::NonResonant => "n",
+            RateType::Resonant => "r",
+            RateType::Weak => "w",
+            RateType::Other => " ",
+        };
+        let rev = if self.is_reverse { "v" } else { " " };
+
+        // Line 1: chapter(1) + 4spaces + 6 nuclides(5 each) + 8spaces + label(4) + flag(1) + rev(1) + 3spaces + Q(12)
+        let line1 = format!(
+            "{}    {:<5}{:<5}{:<5}{:<5}{:<5}{:<5}        {:<4}{}{}   {:>12.5E}",
+            self.chapter,
+            nuclides[0],
+            nuclides[1],
+            nuclides[2],
+            nuclides[3],
+            nuclides[4],
+            nuclides[5],
+            self.label,
+            flag,
+            rev,
+            self.q_value,
+        );
+
+        // Lines 2-3: coefficients in 13-char fields (Fortran E13.6 equivalent)
+        let a = &self.coefficients;
+        let line2 = format!(
+            "{:>13.5e}{:>13.5e}{:>13.5e}{:>13.5e}",
+            a[0], a[1], a[2], a[3]
+        );
+        let line3 = format!("{:>13.5e}{:>13.5e}{:>13.5e}", a[4], a[5], a[6]);
+
+        format!("{}\n{}\n{}", line1, line2, line3)
+    }
+
     /// Evaluate the REACLIB 7-parameter rate formula at temperature T9 (in GK).
     ///
     /// lambda = exp(a0 + a1/T9 + a2/T9^{1/3} + a3*T9^{1/3} + a4*T9 + a5*T9^{5/3} + a6*ln(T9))
@@ -378,5 +432,210 @@ mod tests {
         let temps = vec![1.0, 2.0];
         let rates = vec![1.0, 2.0];
         assert!(fit_reaclib_params(&temps, &rates).is_err());
+    }
+
+    #[test]
+    fn reaclib_roundtrip_serialize_parse() {
+        // Create an entry, serialize to REACLIB format, parse back, and verify
+        let original = ReaclibEntry {
+            chapter: 5,
+            reactants: vec!["n".into(), "fe56".into()],
+            products: vec!["fe57".into(), "g".into()],
+            label: "ka02".into(),
+            rate_type: RateType::NonResonant,
+            is_reverse: false,
+            q_value: 7.646e+00,
+            coefficients: [18.12, 0.0, -23.44, -1.222, 0.1476, -0.01116, -0.667],
+        };
+
+        let serialized = original.to_reaclib_string();
+        let parsed = parse_reaclib(&serialized).unwrap();
+        assert_eq!(parsed.len(), 1);
+
+        let e = &parsed[0];
+        assert_eq!(e.chapter, original.chapter);
+        assert_eq!(e.reactants, original.reactants);
+        assert_eq!(e.products, original.products);
+        assert_eq!(e.label, original.label);
+        assert_eq!(e.rate_type, original.rate_type);
+        assert_eq!(e.is_reverse, original.is_reverse);
+        assert!(
+            (e.q_value - original.q_value).abs() < 1e-2,
+            "Q-value: {} vs {}",
+            e.q_value,
+            original.q_value
+        );
+
+        // Verify coefficients roundtrip within format precision (E13.5 ~ 5 significant digits)
+        for k in 0..7 {
+            let orig = original.coefficients[k];
+            let parsed_val = e.coefficients[k];
+            if orig.abs() > 1e-15 {
+                let rel_err = ((parsed_val - orig) / orig).abs();
+                assert!(
+                    rel_err < 1e-4,
+                    "a[{}]: {} vs {}, rel_err = {:.2e}",
+                    k,
+                    parsed_val,
+                    orig,
+                    rel_err
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reaclib_serialize_rate_evaluation_consistency() {
+        // Verify that serialized-then-parsed entry gives same rates as original
+        let original = ReaclibEntry {
+            chapter: 4,
+            reactants: vec!["p".into(), "fe56".into()],
+            products: vec!["co57".into()],
+            label: "rath".into(),
+            rate_type: RateType::NonResonant,
+            is_reverse: false,
+            q_value: 5.847,
+            coefficients: [16.55, 0.0, -19.86, -1.062, 0.1284, -0.00982, -0.5432],
+        };
+
+        let serialized = original.to_reaclib_string();
+        let parsed = parse_reaclib(&serialized).unwrap();
+        let reparsed = &parsed[0];
+
+        // Evaluate at several temperatures and compare
+        for &t9 in &[0.1, 0.5, 1.0, 3.0, 10.0] {
+            let rate_orig = original.evaluate(t9);
+            let rate_parsed = reparsed.evaluate(t9);
+            let rel_err = ((rate_parsed - rate_orig) / rate_orig).abs();
+            assert!(
+                rel_err < 1e-3,
+                "T9={}: rate mismatch {:.6e} vs {:.6e}, rel_err={:.2e}",
+                t9,
+                rate_parsed,
+                rate_orig,
+                rel_err
+            );
+        }
+    }
+
+    #[test]
+    fn reaclib_serialize_format_field_widths() {
+        // Acceptance test: verify the serialized format has correct field positions
+        // for pynucastro compatibility.
+        //
+        // pynucastro expects:
+        //   col 0: chapter (1 char)
+        //   col 5-9, 10-14, ..., 30-34: nuclide fields (5 chars each)
+        //   col 43-46: label (4 chars)
+        //   col 47: rate type flag
+        //   col 48: reverse flag
+        //   line length >= 54
+        let entry = ReaclibEntry {
+            chapter: 5,
+            reactants: vec!["n".into(), "fe56".into()],
+            products: vec!["fe57".into(), "g".into()],
+            label: "ka02".into(),
+            rate_type: RateType::NonResonant,
+            is_reverse: false,
+            q_value: 7.646e+00,
+            coefficients: [18.12, 0.0, -23.44, -1.222, 0.1476, -0.01116, -0.667],
+        };
+
+        let output = entry.to_reaclib_string();
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 3, "REACLIB entry must be exactly 3 lines");
+
+        let line1 = lines[0];
+        assert!(line1.len() >= 54, "Line 1 too short: {} chars", line1.len());
+
+        // Chapter number at position 0
+        assert_eq!(&line1[0..1], "5");
+
+        // First nuclide at position 5
+        assert_eq!(line1[5..10].trim(), "n");
+
+        // Second nuclide at position 10
+        assert_eq!(line1[10..15].trim(), "fe56");
+
+        // Third nuclide at position 15
+        assert_eq!(line1[15..20].trim(), "fe57");
+
+        // Label at position 43
+        assert_eq!(line1[43..47].trim(), "ka02");
+
+        // Rate type flag at position 47
+        assert_eq!(&line1[47..48], "n");
+
+        // Reverse flag at position 48
+        assert_eq!(&line1[48..49], " ");
+
+        // Coefficient lines must have 13-char fields
+        let line2 = lines[1];
+        assert!(line2.len() >= 52, "Line 2 too short: {} chars", line2.len());
+
+        // Verify each 13-char coefficient field is parseable
+        for k in 0..4 {
+            let field = &line2[k * 13..(k + 1) * 13];
+            let val: f64 = field
+                .trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("Cannot parse coefficient field {}: '{}'", k, field));
+            assert!(val.is_finite(), "Coefficient a[{}] is not finite", k);
+        }
+
+        let line3 = lines[2];
+        for k in 0..3 {
+            let field = &line3[k * 13..(k + 1) * 13];
+            let val: f64 = field.trim().parse().unwrap_or_else(|_| {
+                panic!("Cannot parse coefficient field {}: '{}'", k + 4, field)
+            });
+            assert!(val.is_finite(), "Coefficient a[{}] is not finite", k + 4);
+        }
+    }
+
+    #[test]
+    fn reaclib_serialize_multiple_chapters() {
+        // Test serialization for different chapter types
+        let entries = vec![
+            ReaclibEntry {
+                chapter: 1,
+                reactants: vec!["co57".into()],
+                products: vec!["fe57".into()],
+                label: "wc12".into(),
+                rate_type: RateType::Weak,
+                is_reverse: false,
+                q_value: 0.836,
+                coefficients: [14.52, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            },
+            ReaclibEntry {
+                chapter: 4,
+                reactants: vec!["p".into(), "fe56".into()],
+                products: vec!["co57".into()],
+                label: "rath".into(),
+                rate_type: RateType::NonResonant,
+                is_reverse: false,
+                q_value: 5.847,
+                coefficients: [16.55, 0.0, -19.86, -1.062, 0.1284, -0.00982, -0.5432],
+            },
+        ];
+
+        // Serialize all entries
+        let combined: String = entries
+            .iter()
+            .map(|e| e.to_reaclib_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Parse back
+        let parsed = parse_reaclib(&combined).unwrap();
+        assert_eq!(
+            parsed.len(),
+            2,
+            "Should parse 2 entries from combined output"
+        );
+        assert_eq!(parsed[0].chapter, 1);
+        assert_eq!(parsed[0].reactants, vec!["co57"]);
+        assert_eq!(parsed[1].chapter, 4);
+        assert_eq!(parsed[1].reactants, vec!["p", "fe56"]);
     }
 }

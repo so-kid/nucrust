@@ -82,6 +82,7 @@ fn e2e_fe56_hf_cross_section() {
         nld: &nld,
         gsf: &gsf,
         config: &hf_config,
+        discrete_levels: None,
     };
 
     let results = hf::hauser_feshbach(&calc).unwrap();
@@ -159,6 +160,7 @@ fn e2e_pipeline_all_sigma_non_negative() {
         nld: &nld,
         gsf: &gsf,
         config: &hf_config,
+        discrete_levels: None,
     };
 
     let results = hf::hauser_feshbach(&calc).unwrap();

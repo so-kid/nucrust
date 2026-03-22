@@ -86,15 +86,23 @@ pub struct ExperimentalData {
 /// Index identifying a fit parameter within `RMatrixParams`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParamIndex {
-    /// Level energy: levels[level_idx].energy
-    LevelEnergy { level_idx: usize },
-    /// Reduced width amplitude: levels[level_idx].reduced_widths[channel_idx]
-    ReducedWidth {
+    /// Level energy: `levels[level_idx].energy`
+    LevelEnergy {
+        /// Index into `levels` array.
         level_idx: usize,
+    },
+    /// Reduced width amplitude: `levels[level_idx].reduced_widths[channel_idx]`
+    ReducedWidth {
+        /// Index into `levels` array.
+        level_idx: usize,
+        /// Index into the level's `reduced_widths` array.
         channel_idx: usize,
     },
-    /// Channel radius: channels[channel_idx].radius
-    ChannelRadius { channel_idx: usize },
+    /// Channel radius: `channels[channel_idx].radius`
+    ChannelRadius {
+        /// Index into `channels` array.
+        channel_idx: usize,
+    },
 }
 
 /// Result of a Levenberg-Marquardt fit.

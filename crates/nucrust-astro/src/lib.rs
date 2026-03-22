@@ -1,3 +1,10 @@
+//! Astrophysical reaction rate computations.
+//!
+//! Provides MACS (Maxwellian-Averaged Cross Section), reaction rate NA<σv>,
+//! astrophysical S-factor, and stellar enhancement factor (SEF) calculations.
+
+#![warn(missing_docs)]
+
 pub mod macs;
 pub mod rate;
 pub mod s_factor;

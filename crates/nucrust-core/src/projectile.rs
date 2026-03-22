@@ -3,12 +3,19 @@ use serde::{Deserialize, Serialize};
 /// Projectile / ejectile particle type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Projectile {
+    /// Neutron (n).
     Neutron,
+    /// Proton (p).
     Proton,
+    /// Deuteron (d, 2H).
     Deuteron,
+    /// Triton (t, 3H).
     Triton,
-    Helion, // 3He
+    /// Helion (3He).
+    Helion,
+    /// Alpha particle (4He).
     Alpha,
+    /// Gamma ray (photon).
     Gamma,
 }
 

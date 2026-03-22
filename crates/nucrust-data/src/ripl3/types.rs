@@ -3,6 +3,7 @@ use nucrust_core::{Nuclide, Parity};
 /// Discrete level data for a single isotope (from RIPL-3 levels/z???.dat).
 #[derive(Debug, Clone)]
 pub struct IsotopeData {
+    /// Nuclide identifier (Z, A).
     pub nuclide: Nuclide,
     /// Number of levels in the decay scheme.
     pub n_levels: usize,
@@ -55,6 +56,7 @@ pub struct GammaTransition {
 /// Mass table entry from RIPL-3 masses/mass-*.dat.
 #[derive(Debug, Clone)]
 pub struct MassEntry {
+    /// Nuclide identifier (Z, A).
     pub nuclide: Nuclide,
     /// Mass excess (MeV).
     pub mass_excess: f64,

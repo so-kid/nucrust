@@ -1,0 +1,11 @@
+[book]
+title = "nucrust User Guide"
+authors = ["nucrust contributors"]
+language = "en"
+src = "book/src"
+
+[build]
+build-dir = "book/build"
+
+[output.html]
+git-repository-url = "https://github.com/nucrust/nucrust"

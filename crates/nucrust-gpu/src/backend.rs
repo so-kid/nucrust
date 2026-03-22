@@ -12,10 +12,13 @@ use std::sync::Arc;
 
 use crate::kernel_cache::GpuModuleCache;
 
-/// GPU compute backend.
+/// GPU compute backend using CUDA.
 pub struct GpuBackend {
+    /// CUDA context handle.
     ctx: Arc<CudaContext>,
+    /// Default CUDA stream.
     stream: Arc<CudaStream>,
+    /// Cached compiled kernel modules.
     modules: GpuModuleCache,
 }
 

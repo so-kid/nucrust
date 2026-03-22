@@ -358,6 +358,7 @@ pub struct CustomOmp {
 }
 
 impl CustomOmp {
+    /// Creates a new `CustomOmp` with default parameter values.
     pub fn new() -> Self {
         Self {
             v_real: 50.0,

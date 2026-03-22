@@ -13,15 +13,24 @@ const NUMEROV_KERNEL_SRC: &str = include_str!("../../../kernels/numerov.cu");
 
 /// Parameters for the GPU Numerov computation.
 pub struct GpuNumerovParams {
+    /// Real part of the optical potential depth (MeV).
     pub v_real: f64,
+    /// Imaginary (absorptive) potential depth (MeV).
     pub w_imag: f64,
+    /// Radius parameter r0 (fm).
     pub r0: f64,
+    /// Woods-Saxon diffuseness a (fm).
     pub a_ws: f64,
-    pub r_ws: f64, // R = r0 * A^{1/3}
+    /// Woods-Saxon radius R = r0 * A^{1/3} (fm).
+    pub r_ws: f64,
+    /// Matching radius for S-matrix extraction (fm).
     pub r_match: f64,
+    /// Numerov integration step size (fm).
     pub step_size: f64,
+    /// hbar^2 / (2 * mu) in MeV*fm^2.
     pub hbar2_over_2mu: f64,
-    pub eta: f64, // Sommerfeld parameter (for S-matrix extraction)
+    /// Sommerfeld parameter for Coulomb matching.
+    pub eta: f64,
 }
 
 /// Run batch Numerov on GPU and extract transmission coefficients.

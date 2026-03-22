@@ -9,21 +9,21 @@ use std::sync::Arc;
 
 const RMATRIX_KERNEL_SRC: &str = include_str!("../../../kernels/rmatrix_solve.cu");
 
-/// Parameters for GPU R-matrix computation.
+/// Parameters for GPU R-matrix computation (max 10 channels).
 pub struct GpuRMatrixParams {
-    /// Reduced width amplitudes gamma_{lambda,c} [n_levels * n_ch].
+    /// Reduced width amplitudes gamma_{lambda,c}, flattened [n_levels * n_ch].
     pub gamma_widths: Vec<f64>,
-    /// Pole energies E_lambda [n_levels].
+    /// Pole energies E_lambda (MeV), length n_levels.
     pub level_energies: Vec<f64>,
-    /// Penetrabilities P_c [n_ch].
+    /// Channel penetrabilities P_c, length n_ch.
     pub penetrabilities: Vec<f64>,
-    /// Shift functions S_c [n_ch].
+    /// Channel shift functions S_c, length n_ch.
     pub shift_functions: Vec<f64>,
-    /// Number of channels.
+    /// Number of channels (max 10).
     pub n_channels: usize,
     /// Number of R-matrix levels.
     pub n_levels: usize,
-    /// k^2 for entrance channel (fm^{-2}).
+    /// Entrance channel wave number squared k^2 (fm^{-2}).
     pub k_sq: f64,
 }
 

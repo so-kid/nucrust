@@ -20,9 +20,11 @@ pub struct GpuCoulombTable {
     pub d_eta: CudaSlice<f64>,
     /// rho grid [n_rho]
     pub d_rho: CudaSlice<f64>,
-    /// Grid dimensions
+    /// Number of eta grid points.
     pub n_eta: usize,
+    /// Number of rho grid points.
     pub n_rho: usize,
+    /// Number of l values (l_max + 1).
     pub n_l: usize,
 }
 

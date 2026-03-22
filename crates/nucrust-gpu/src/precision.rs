@@ -79,7 +79,7 @@ pub fn detect_precision(ctx: &Arc<CudaContext>) -> Result<PrecisionStrategy, Cor
     Ok(strategy)
 }
 
-/// Maximum acceptable relative error for mixed precision.
+/// Maximum acceptable relative error for mixed-precision computations (10^{-5}).
 pub const MIXED_PRECISION_TOL: f64 = 1e-5;
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ use crate::fixed_field::*;
 /// GDR (Giant Dipole Resonance) parameters for the standard Lorentzian model.
 #[derive(Debug, Clone)]
 pub struct GdrParams {
+    /// Target nuclide.
     pub nuclide: Nuclide,
     /// GDR peak energy E_GDR (MeV) — component 1.
     pub e_gdr1: f64,
@@ -90,7 +91,9 @@ pub struct GsfTableEntry {
 /// Tabulated GSF for a single nuclide.
 #[derive(Debug, Clone)]
 pub struct GsfTable {
+    /// Target nuclide.
     pub nuclide: Nuclide,
+    /// Tabulated strength function entries.
     pub entries: Vec<GsfTableEntry>,
 }
 
