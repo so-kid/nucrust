@@ -1,0 +1,50 @@
+{
+  "source": "placeholder (systematics)",
+  "reaction": "7Be(p,gamma)8B",
+  "compound_nucleus": "8B",
+  "reference": "Junghans et al., PRC 68, 065803 (2003)",
+  "S17_0_eVb": 20.8,
+  "S17_0_error_eVb": [
+    0.7,
+    1.0
+  ],
+  "energy_range_cm_mev": [
+    0.01,
+    3.0000000000000013
+  ],
+  "n_energies": 100,
+  "r_matrix_parameters": {
+    "channel_radius_fm": 2.5,
+    "levels": [
+      {
+        "Jpi": "2+",
+        "E_cm_MeV": -0.1375,
+        "type": "subthreshold"
+      },
+      {
+        "Jpi": "1+",
+        "E_cm_MeV": 0.632,
+        "type": "resonance"
+      },
+      {
+        "Jpi": "3+",
+        "E_cm_MeV": 2.183,
+        "type": "resonance"
+      }
+    ],
+    "particle_pairs": [
+      {
+        "pair": "7Be+p",
+        "j1": 0.5,
+        "j2": 1.5,
+        "z1": 1,
+        "z2": 4
+      },
+      {
+        "pair": "8B+gamma",
+        "type": "capture"
+      }
+    ]
+  },
+  "notes": "B4 benchmark for nucrust R-matrix validation."
+}

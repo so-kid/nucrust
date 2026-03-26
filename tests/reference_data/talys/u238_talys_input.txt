@@ -1,0 +1,10 @@
+# TALYS input: U-238(n,gamma)
+# B3 benchmark: deformed heavy nucleus stress test
+projectile n
+element U
+mass 238
+energy energies_fine.txt
+outbasic y
+outtransenergy y
+transpower 12
+outdiscrete y

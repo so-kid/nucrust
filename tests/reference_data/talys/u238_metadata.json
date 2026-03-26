@@ -1,0 +1,25 @@
+{
+  "source": "TALYS-2.2",
+  "target": {
+    "element": "U",
+    "A": 238,
+    "Z": 92
+  },
+  "projectile": "n",
+  "reaction": "(n,gamma)",
+  "optical_model": "Koning-Delaroche (2003) global OMP + coupled-channel for deformed",
+  "deformation": {
+    "beta2": 0.22,
+    "coupled_states": [
+      "0+",
+      "2+",
+      "4+"
+    ]
+  },
+  "energy_range_mev": [
+    0.001,
+    20.000000000000004
+  ],
+  "n_energies": 100,
+  "notes": "B3 stress test: deformed heavy nucleus with fission competition."
+}

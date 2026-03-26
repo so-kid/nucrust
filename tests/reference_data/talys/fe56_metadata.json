@@ -1,0 +1,28 @@
+{
+  "source": "TALYS-2.2",
+  "target": {
+    "element": "Fe",
+    "A": 56,
+    "Z": 26
+  },
+  "projectile": "n",
+  "reaction": "(n,gamma)",
+  "optical_model": "Koning-Delaroche (2003) global neutron OMP",
+  "energy_range_mev": [
+    0.001,
+    20.000000000000004
+  ],
+  "n_energies": 100,
+  "n_transmission_energies": 68,
+  "l_max_transmission": 17,
+  "n_cross_section_energies": 100,
+  "notes": "Generated from TALYS-2.2 (MIT License). Reference: Koning, Hilaire, Goriely, EPJ A59(6) 131 (2023).",
+  "files": {
+    "transmission": "fe56_ng_transmission.dat",
+    "transmission_spinorbit": "fe56_ng_transmission_spinorbit.dat",
+    "binary_cross_sections": "fe56_ng_cross_section.dat",
+    "total_cross_sections": "fe56_total_cross_section.dat",
+    "talys_input": "fe56_talys_input.txt",
+    "energy_grid": "energies_fine.txt"
+  }
+}

@@ -1,0 +1,23 @@
+<config>
+true
+/tmp/azure2_be7pg/output
+/tmp/azure2_be7pg/checks
+no
+no
+no
+no
+no
+no
+no
+no
+</config>
+<levels>
+1.0  1  0.632  0  1  1  4  2  1  1  0  0.3000  0.5  1  1.5  -1  0.0  1.00728  7.01693  1  4  0.1375  0.1375  0  1  0.0  0  2.5000  0.0  0.0  0
+</levels>
+<segmentsData>
+</segmentsData>
+<segmentsTest>
+1  1  1  0.100  2.000  0.020  0.0  0.0  1.0  0
+</segmentsTest>
+<targetInt>
+</targetInt>
