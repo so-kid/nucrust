@@ -78,10 +78,7 @@ pub fn parse_omp_database(input: &str) -> Result<Vec<OmpParameterSet>, CoreError
 
     while i < lines.len() {
         let line = lines[i];
-        let trimmed = line.trim();
-
-        // Skip empty and comment lines
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+        if is_skippable_line(line) {
             i += 1;
             continue;
         }

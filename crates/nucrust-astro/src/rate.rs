@@ -2,7 +2,7 @@
 //!
 //! NA<σv> = NA · (8/πμ)^{1/2} · (kT)^{-1/2} · MACS(kT)
 
-use nucrust_core::units::BOLTZMANN_MEV;
+use nucrust_core::units::{BOLTZMANN_MEV, NA_SIGMA_V_PREFACTOR};
 use nucrust_core::{CoreError, ReactionRate};
 
 /// Compute astrophysical reaction rate NA<σv>(T) from MACS values.
@@ -47,17 +47,10 @@ pub fn compute_reaction_rate(
                 return 0.0;
             }
 
-            // NA<σv> = NA · sqrt(8/(π·μ_MeV)) · (kT)^{-1/2} · MACS
-            // Units: need to convert to cm³/mol/s
-            //
             // Standard formula (Fowler, Caughlan, Zimmerman):
-            // NA<σv> = 3.7318e10 · (μ·T9)^{-1/2} · MACS(mb) · exp_factor
+            // NA<σv> = NA_SIGMA_V_PREFACTOR · (μ·T9)^{-1/2} · MACS(mb)
             // where μ is in amu, T9 in GK
-            //
-            // The constant 3.7318e10 = NA · sqrt(8/(π·m_u·k_B)) in CGS
-            // with m_u in g, k_B in erg/K
-            let constant = 3.7318e10; // cm³/(mol·s·mb) for μ in amu, T9 in GK
-            constant / (reduced_mass_amu * t9).sqrt() * macs
+            NA_SIGMA_V_PREFACTOR / (reduced_mass_amu * t9).sqrt() * macs
         })
         .collect();
 

@@ -2,6 +2,8 @@
 //!
 //! Moldauer form with Kawano-Talou parameterization of the GOE degrees of freedom.
 
+use crate::NUMERICAL_FLOOR;
+
 /// Result of Moldauer WFC calculation.
 #[derive(Debug, Clone)]
 pub struct MoldauerResult {
@@ -37,7 +39,7 @@ pub fn moldauer_wfc(transmissions: &[f64], n_quadrature: usize) -> MoldauerResul
     let n_ch = transmissions.len();
     let t_total: f64 = transmissions.iter().sum();
 
-    if t_total < 1e-30 || n_ch == 0 {
+    if t_total < NUMERICAL_FLOOR || n_ch == 0 {
         return MoldauerResult {
             w_factors: vec![vec![1.0; n_ch]; n_ch],
         };
@@ -131,7 +133,7 @@ pub fn goe_wfc(transmissions: &[f64], n_quad_laguerre: usize, n_quad_legendre: u
     let n_ch = transmissions.len();
     let t_total: f64 = transmissions.iter().sum();
 
-    if t_total < 1e-30 || n_ch == 0 {
+    if t_total < NUMERICAL_FLOOR || n_ch == 0 {
         return GoeResult {
             w_factors: vec![vec![1.0; n_ch]; n_ch],
         };

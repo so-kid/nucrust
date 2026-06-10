@@ -8,23 +8,6 @@ use nucrust_core::backend::NumerovConfig;
 use nucrust_core::{Channel, EnergyGrid, Nuclide, Projectile};
 use proptest::prelude::*;
 
-/// Generate a valid neutron channel with random target nuclide.
-fn arb_neutron_channel() -> impl Strategy<Value = Channel> {
-    // Z: 20-82 (medium to heavy nuclei where KD is valid)
-    // A: Z+Z/2 to Z+Z*2 (reasonable N/Z ratio)
-    (20_u16..=82)
-        .prop_flat_map(|z| {
-            let a_min = z + z / 2;
-            let a_max = (z * 3).min(250);
-            (Just(z), a_min..=a_max)
-        })
-        .prop_map(|(z, a)| Channel {
-            projectile: Projectile::Neutron,
-            target: Nuclide::new(z, a).unwrap(),
-            q_value: 0.0,
-        })
-}
-
 proptest! {
     /// T-2A.14: Transmission coefficients must be in [0, 1] for all (E, l).
     #[test]
@@ -52,7 +35,7 @@ proptest! {
 
         for (i, &t) in tc.data.iter().enumerate() {
             prop_assert!(
-                t >= 0.0 && t <= 1.0,
+                (0.0..=1.0).contains(&t),
                 "T[{}] = {} out of [0,1] for Z={}, A={}, E={}",
                 i, t, z, a, energy
             );

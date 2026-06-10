@@ -17,6 +17,8 @@
 
 #![warn(missing_docs)]
 
+/// Shared numerical constants (convergence thresholds, zero guards).
+mod consts;
 /// Coulomb wave function computation (Thompson-Barnett / Steed algorithm).
 pub mod coulomb;
 /// Error types for special function computations.

@@ -34,6 +34,24 @@ impl Multipole {
     pub fn is_electric(&self) -> bool {
         matches!(self, Self::E1 | Self::E2 | Self::E3)
     }
+
+    /// Parity carried by the emitted photon: (-1)^L for EL, (-1)^(L+1) for ML.
+    #[inline]
+    pub fn photon_parity(&self) -> Parity {
+        let odd_l = self.order() % 2 == 1;
+        if self.is_electric() == odd_l {
+            Parity::Negative
+        } else {
+            Parity::Positive
+        }
+    }
+
+    /// Final-state parity after a gamma transition of this multipole
+    /// from a state with parity `initial`.
+    #[inline]
+    pub fn final_parity(&self, initial: Parity) -> Parity {
+        initial * self.photon_parity()
+    }
 }
 
 /// Nuclear level density model.

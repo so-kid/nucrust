@@ -12,8 +12,7 @@ pub fn parse_mass_table(input: &str) -> Result<Vec<MassEntry>, CoreError> {
     let mut entries = Vec::new();
 
     for line in input.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+        if is_skippable_line(line) {
             continue;
         }
 

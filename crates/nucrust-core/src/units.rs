@@ -15,6 +15,13 @@ pub const BOLTZMANN_MEV: f64 = 8.617333262e-2;
 /// Avogadro's number (1/mol) -- exact since 2019 SI redefinition
 pub const AVOGADRO: f64 = 6.02214076e23;
 
+/// NA<sigma*v> prefactor: NA * sqrt(8/(pi*m_u*k_B)) in CGS units.
+///
+/// Converts MACS to a reaction rate via the Fowler-Caughlan-Zimmerman formula
+/// NA<sigma*v> = NA_SIGMA_V_PREFACTOR / sqrt(mu * T9) * MACS,
+/// in cm^3/(mol*s*mb) for the reduced mass mu in amu and T9 in GK.
+pub const NA_SIGMA_V_PREFACTOR: f64 = 3.7318e10;
+
 /// Sommerfeld parameter: eta = Z1*Z2*alpha*sqrt(mu*c^2 / (2*E_cm))
 ///
 /// where alpha is the fine-structure constant.

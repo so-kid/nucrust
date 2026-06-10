@@ -26,8 +26,7 @@ pub fn parse_shell_corrections(input: &str) -> Result<Vec<ShellCorrection>, Core
     let mut entries = Vec::new();
 
     for line in input.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+        if is_skippable_line(line) {
             continue;
         }
 

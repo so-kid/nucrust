@@ -333,7 +333,7 @@ mod tests {
         assert_eq!(e.reactants.len(), 2);
         assert_eq!(e.reactants[0], "n");
         assert_eq!(e.reactants[1], "fe56");
-        assert!(e.products.len() >= 1);
+        assert!(!e.products.is_empty());
         assert_eq!(e.products[0], "fe57");
         assert!(!e.is_reverse);
     }
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn reaclib_serialize_multiple_chapters() {
         // Test serialization for different chapter types
-        let entries = vec![
+        let entries = [
             ReaclibEntry {
                 chapter: 1,
                 reactants: vec!["co57".into()],

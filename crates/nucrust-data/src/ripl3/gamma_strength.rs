@@ -35,8 +35,7 @@ pub fn parse_gdr_params(input: &str) -> Result<Vec<GdrParams>, CoreError> {
     let mut entries = Vec::new();
 
     for line in input.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+        if is_skippable_line(line) {
             continue;
         }
 
@@ -108,9 +107,7 @@ pub fn parse_gsf_table(input: &str, z: u16) -> Result<Vec<GsfTable>, CoreError> 
 
     while i < lines.len() {
         let line = lines[i];
-        let trimmed = line.trim();
-
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+        if is_skippable_line(line) {
             i += 1;
             continue;
         }

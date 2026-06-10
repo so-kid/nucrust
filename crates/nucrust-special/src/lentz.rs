@@ -1,8 +1,6 @@
+use crate::consts::CF_ZERO_GUARD as SMALL;
 use crate::error::SpecialError;
 use num_complex::Complex64;
-
-/// Zero-guard value for the modified Lentz method.
-const SMALL: f64 = 1e-50;
 
 /// Evaluate a real continued fraction using the modified Lentz-Thompson-Barnett method.
 ///
@@ -55,7 +53,7 @@ pub fn continued_fraction_real(
 }
 
 /// Complex zero-guard value.
-const SMALL_C: Complex64 = Complex64::new(1e-50, 0.0);
+const SMALL_C: Complex64 = Complex64::new(SMALL, 0.0);
 
 /// Evaluate a complex continued fraction using the modified Lentz-Thompson-Barnett method.
 ///

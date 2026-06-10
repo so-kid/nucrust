@@ -4,7 +4,7 @@
 //!
 //! Provides:
 //! - PyNuclide, PyCrossSection, PyReactionRate wrapper types
-//! - calc_transmission_coeffs, calc_hf_cross_section, calc_rmatrix, calc_macs, fit_reaclib functions
+//! - calc_transmission_coeffs, calc_hf_cross_section, calc_macs, fit_reaclib functions
 //! - NumPy zero-copy array access for cross section data
 
 use numpy::PyArray1;

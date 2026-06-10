@@ -1,13 +1,8 @@
+use crate::consts::{CF_EPS, MAX_CF_ITER, RHO_SMALL};
 use crate::error::SpecialError;
 use crate::gamma::{coulomb_phase_shift, gamow_factor};
 use crate::lentz::continued_fraction_real;
 
-/// Maximum iterations for continued fractions.
-const MAX_ITER: u32 = 20_000;
-/// Convergence threshold for continued fractions.
-const CF_EPS: f64 = 1e-15;
-/// Threshold below which power series is used for F (Steed used above).
-const RHO_SMALL: f64 = 0.5;
 /// Maximum terms in power series.
 const MAX_SERIES_TERMS: usize = 300;
 /// Minimum terms in power series before checking convergence.
@@ -81,7 +76,7 @@ fn cf1(l: f64, eta: f64, rho: f64) -> Result<f64, SpecialError> {
                 ln / rho + eta / ln + (ln + 1.0) / rho + eta / (ln + 1.0)
             }
         },
-        MAX_ITER,
+        MAX_CF_ITER,
         CF_EPS,
     )
 }
@@ -127,7 +122,7 @@ fn cf2(l: f64, eta: f64, rho: f64) -> Result<(f64, f64), SpecialError> {
 
     let mut pk = 0.0;
 
-    for _ in 1..=MAX_ITER {
+    for _ in 1..=MAX_CF_ITER {
         p += dp;
         q += dq;
         pk += 2.0;
@@ -154,7 +149,7 @@ fn cf2(l: f64, eta: f64, rho: f64) -> Result<(f64, f64), SpecialError> {
 
     Err(SpecialError::ConvergenceFailure {
         algorithm: "CF2 (Steed)",
-        iterations: MAX_ITER,
+        iterations: MAX_CF_ITER,
         residual: (p * p + q * q).sqrt(),
     })
 }

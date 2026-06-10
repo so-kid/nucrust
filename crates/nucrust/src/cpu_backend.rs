@@ -64,100 +64,8 @@ impl ComputeBackend for CpuBackend {
         gsf_params: &GsfModelParams,
         config: &HfConfig,
     ) -> Result<CrossSection, CoreError> {
-        // Create NLD model from params
-        let nld: Box<dyn nucrust_core::LevelDensity> = match nld_params {
-            NldModelParams::ConstantTemperature { t, e0 } => Box::new(ConstantTemperature {
-                temperature: *t,
-                e0: *e0,
-                a: 6.0, // default level density parameter
-            }),
-            NldModelParams::Bsfg { a, delta, sigma } => Box::new(BackShiftedFermiGas {
-                a: *a,
-                delta: *delta,
-                sigma: Some(*sigma),
-            }),
-            NldModelParams::GilbertCameron {
-                a,
-                delta,
-                t,
-                e0,
-                e_match,
-                sigma,
-            } => Box::new(GilbertCameron {
-                ct: ConstantTemperature {
-                    temperature: *t,
-                    e0: *e0,
-                    a: *a,
-                },
-                bsfg: BackShiftedFermiGas {
-                    a: *a,
-                    delta: *delta,
-                    sigma: Some(*sigma),
-                },
-                e_match: *e_match,
-            }),
-            NldModelParams::Ignatyuk {
-                a_tilde,
-                delta_w,
-                gamma,
-                delta,
-            } => Box::new(Ignatyuk {
-                a_tilde: *a_tilde,
-                delta_w: *delta_w,
-                gamma: *gamma,
-                delta: *delta,
-            }),
-            NldModelParams::HfbTable {
-                excitations,
-                spins,
-                densities,
-            } => Box::new(
-                nucrust_hf::HfbTableInterp::new(excitations.clone(), spins.clone(), densities)
-                    .map_err(|_| CoreError::InvalidParameter {
-                        name: "hfb_table",
-                        value: 0.0,
-                        reason: "invalid HFB table data",
-                    })?,
-            ),
-        };
-
-        // Create GSF model from params
-        let gsf: Box<dyn nucrust_core::GammaStrength> = match gsf_params {
-            GsfModelParams::Slo {
-                e_gdr,
-                gamma_gdr,
-                sigma_gdr,
-            } => Box::new(StandardLorentzian {
-                e_gdr: *e_gdr,
-                gamma_gdr: *gamma_gdr,
-                sigma_gdr: *sigma_gdr,
-                m1_params: None,
-            }),
-            GsfModelParams::Eglo {
-                e_gdr,
-                gamma_gdr,
-                sigma_gdr,
-                temperature,
-            } => Box::new(EnhancedGeneralizedLorentzian {
-                e_gdr: *e_gdr,
-                gamma_gdr: *gamma_gdr,
-                sigma_gdr: *sigma_gdr,
-                temperature: *temperature,
-            }),
-            GsfModelParams::QrpaTable {
-                energies,
-                strengths_e1,
-                strengths_m1,
-            } => Box::new(
-                nucrust_hf::QrpaTableInterp::new(energies, strengths_e1, strengths_m1).map_err(
-                    |_| CoreError::InvalidParameter {
-                        name: "qrpa_table",
-                        value: 0.0,
-                        reason: "invalid QRPA table data",
-                    },
-                )?,
-            ),
-        };
+        let nld = build_nld(nld_params)?;
+        let gsf = build_gsf(gsf_params)?;
 
         // Create a dummy entrance channel (will be refined when pipeline is connected)
         let entrance = Channel {
@@ -273,6 +181,109 @@ impl ComputeBackend for CpuBackend {
         }
         Ok(rates)
     }
+}
+
+/// Instantiate a level density model from backend parameters.
+fn build_nld(
+    nld_params: &NldModelParams,
+) -> Result<Box<dyn nucrust_core::LevelDensity>, CoreError> {
+    Ok(match nld_params {
+        NldModelParams::ConstantTemperature { t, e0 } => Box::new(ConstantTemperature {
+            temperature: *t,
+            e0: *e0,
+            a: 6.0, // default level density parameter
+        }),
+        NldModelParams::Bsfg { a, delta, sigma } => Box::new(BackShiftedFermiGas {
+            a: *a,
+            delta: *delta,
+            sigma: Some(*sigma),
+        }),
+        NldModelParams::GilbertCameron {
+            a,
+            delta,
+            t,
+            e0,
+            e_match,
+            sigma,
+        } => Box::new(GilbertCameron {
+            ct: ConstantTemperature {
+                temperature: *t,
+                e0: *e0,
+                a: *a,
+            },
+            bsfg: BackShiftedFermiGas {
+                a: *a,
+                delta: *delta,
+                sigma: Some(*sigma),
+            },
+            e_match: *e_match,
+        }),
+        NldModelParams::Ignatyuk {
+            a_tilde,
+            delta_w,
+            gamma,
+            delta,
+        } => Box::new(Ignatyuk {
+            a_tilde: *a_tilde,
+            delta_w: *delta_w,
+            gamma: *gamma,
+            delta: *delta,
+        }),
+        NldModelParams::HfbTable {
+            excitations,
+            spins,
+            densities,
+        } => Box::new(
+            nucrust_hf::HfbTableInterp::new(excitations.clone(), spins.clone(), densities)
+                .map_err(|_| CoreError::InvalidParameter {
+                    name: "hfb_table",
+                    value: 0.0,
+                    reason: "invalid HFB table data",
+                })?,
+        ),
+    })
+}
+
+/// Instantiate a gamma strength function model from backend parameters.
+fn build_gsf(
+    gsf_params: &GsfModelParams,
+) -> Result<Box<dyn nucrust_core::GammaStrength>, CoreError> {
+    Ok(match gsf_params {
+        GsfModelParams::Slo {
+            e_gdr,
+            gamma_gdr,
+            sigma_gdr,
+        } => Box::new(StandardLorentzian {
+            e_gdr: *e_gdr,
+            gamma_gdr: *gamma_gdr,
+            sigma_gdr: *sigma_gdr,
+            m1_params: None,
+        }),
+        GsfModelParams::Eglo {
+            e_gdr,
+            gamma_gdr,
+            sigma_gdr,
+            temperature,
+        } => Box::new(EnhancedGeneralizedLorentzian {
+            e_gdr: *e_gdr,
+            gamma_gdr: *gamma_gdr,
+            sigma_gdr: *sigma_gdr,
+            temperature: *temperature,
+        }),
+        GsfModelParams::QrpaTable {
+            energies,
+            strengths_e1,
+            strengths_m1,
+        } => Box::new(
+            nucrust_hf::QrpaTableInterp::new(energies, strengths_e1, strengths_m1).map_err(
+                |_| CoreError::InvalidParameter {
+                    name: "qrpa_table",
+                    value: 0.0,
+                    reason: "invalid QRPA table data",
+                },
+            )?,
+        ),
+    })
 }
 
 /// Higher-level convenience: compute transmission coefficients for a channel.

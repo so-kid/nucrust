@@ -10,6 +10,9 @@ use nucrust_core::Nuclide;
 
 use std::f64::consts::PI;
 
+/// Parity equipartition factor: half of the total density is assigned to each parity.
+const PARITY_FACTOR: f64 = 0.5;
+
 /// Spin-cutoff parameter: sigma^2 = 0.0888 * A^{2/3} * a * sqrt(U)
 fn spin_cutoff_sq(a_param: f64, excitation: f64, mass_a: f64) -> f64 {
     let u = excitation.max(0.01);
@@ -51,8 +54,7 @@ impl LevelDensity for ConstantTemperature {
         let rho_tot = (1.0 / self.temperature) * (u / self.temperature).exp();
         let sigma_sq = spin_cutoff_sq(self.a, excitation, nuclide.a() as f64);
 
-        // Factor 0.5 for parity equipartition
-        0.5 * rho_tot * spin_distribution(spin, sigma_sq)
+        PARITY_FACTOR * rho_tot * spin_distribution(spin, sigma_sq)
     }
 
     fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {
@@ -98,7 +100,7 @@ impl LevelDensity for BackShiftedFermiGas {
             .map(|s| s * s)
             .unwrap_or_else(|| spin_cutoff_sq(self.a, u, nuclide.a() as f64));
 
-        0.5 * rho_t * spin_distribution(spin, sigma_sq)
+        PARITY_FACTOR * rho_t * spin_distribution(spin, sigma_sq)
     }
 
     fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {
@@ -197,7 +199,7 @@ impl LevelDensity for Ignatyuk {
         let a_eff = self.a_eff(excitation);
         let sigma_sq = spin_cutoff_sq(a_eff, u, nuclide.a() as f64);
 
-        0.5 * rho_t * spin_distribution(spin, sigma_sq)
+        PARITY_FACTOR * rho_t * spin_distribution(spin, sigma_sq)
     }
 
     fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {
@@ -326,8 +328,8 @@ impl HfbTableInterp {
 
 impl LevelDensity for HfbTableInterp {
     fn rho(&self, _nuclide: &Nuclide, excitation: f64, spin: f64, _parity: Parity) -> f64 {
-        // Factor 0.5 for parity equipartition (table gives total for both parities)
-        0.5 * self.interpolate(excitation, spin)
+        // Table gives the total for both parities.
+        PARITY_FACTOR * self.interpolate(excitation, spin)
     }
 
     fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {

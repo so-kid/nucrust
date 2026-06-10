@@ -241,7 +241,10 @@ impl ComputeBackend for GpuBackend {
 
             results.push(ReactionRate {
                 temperatures: temperatures.to_vec(),
-                na_sigma_v: macs.iter().map(|&m| m * 3.7318e10).collect(), // rough conversion
+                na_sigma_v: macs
+                    .iter()
+                    .map(|&m| m * nucrust_core::units::NA_SIGMA_V_PREFACTOR)
+                    .collect(), // rough conversion (omits 1/sqrt(mu*T9))
                 macs: Some(macs),
                 s_factor: None,
                 sef: None,

@@ -8,6 +8,7 @@ use nucrust_core::spin::Parity;
 use nucrust_core::traits::{GammaStrength, LevelDensity, Multipole};
 use nucrust_core::{Channel, CoreError, Projectile, TransmissionCoeffs};
 
+use crate::{MIN_EMISSION_ENERGY, MIN_EXCITATION, NUMERICAL_FLOOR};
 use std::f64::consts::PI;
 
 /// Discrete level information for the HF calculation.
@@ -131,18 +132,17 @@ fn entrance_transmission(
     particle_transmission(tc, e_idx, two_j, _parity, proj_spin_2j)
 }
 
-/// Compute particle channel transmission for a given (J, pi) at a grid energy index.
-///
-/// Sums T_{lj}(E) over all (l, j) satisfying the triangle condition
-/// |J - s_proj| <= l <= J + s_proj and parity selection.
-fn particle_transmission(
+/// Sum a per-(l, j) transmission contribution over all partial waves
+/// satisfying the triangle condition |two_j - proj_spin_2j| <= 2*l <= two_j + proj_spin_2j.
+fn sum_over_partial_waves<F>(
     tc: &TransmissionCoeffs,
-    e_idx: usize,
     two_j: i32,
-    _parity: Parity,
     proj_spin_2j: i32,
-) -> f64 {
-    let n_e = tc.energy.len();
+    mut t_of: F,
+) -> f64
+where
+    F: FnMut(u32, usize) -> f64,
+{
     let mut t_sum = 0.0;
 
     for l in 0..=tc.l_max {
@@ -161,14 +161,33 @@ fn particle_transmission(
                 continue;
             }
 
-            let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
-            if flat_idx < tc.data.len() {
-                t_sum += tc.data[flat_idx];
-            }
+            t_sum += t_of(l, j_idx);
         }
     }
 
     t_sum
+}
+
+/// Compute particle channel transmission for a given (J, pi) at a grid energy index.
+///
+/// Sums T_{lj}(E) over all (l, j) satisfying the triangle condition
+/// |J - s_proj| <= l <= J + s_proj and parity selection.
+fn particle_transmission(
+    tc: &TransmissionCoeffs,
+    e_idx: usize,
+    two_j: i32,
+    _parity: Parity,
+    proj_spin_2j: i32,
+) -> f64 {
+    let n_e = tc.energy.len();
+    sum_over_partial_waves(tc, two_j, proj_spin_2j, |l, j_idx| {
+        let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
+        if flat_idx < tc.data.len() {
+            tc.data[flat_idx]
+        } else {
+            0.0
+        }
+    })
 }
 
 /// Interpolate T_{lj}(ε) at arbitrary energy ε from the transmission coefficient grid.
@@ -233,28 +252,9 @@ fn particle_transmission_at_energy(
     if energy <= 0.0 {
         return 0.0;
     }
-    let mut t_sum = 0.0;
-
-    for l in 0..=tc.l_max {
-        let l_i = l as i32;
-        for j_idx in 0..2_usize {
-            let two_j_particle = 2 * l_i + (2 * j_idx as i32 - 1);
-            if two_j_particle < 0 {
-                continue;
-            }
-
-            let two_l = 2 * l_i;
-            let diff = (two_j - proj_spin_2j).abs();
-            let sum = two_j + proj_spin_2j;
-            if two_l < diff || two_l > sum {
-                continue;
-            }
-
-            t_sum += interpolate_transmission(tc, energy, l, j_idx);
-        }
-    }
-
-    t_sum
+    sum_over_partial_waves(tc, two_j, proj_spin_2j, |l, j_idx| {
+        interpolate_transmission(tc, energy, l, j_idx)
+    })
 }
 
 /// Compute exit particle transmission with continuum level density integration.
@@ -283,7 +283,7 @@ fn exit_particle_continuum_transmission(
     };
 
     let u_max = excitation - sep_e; // max daughter excitation
-    if u_max < 0.01 {
+    if u_max < MIN_EMISSION_ENERGY {
         return 0.0;
     }
 
@@ -301,7 +301,7 @@ fn exit_particle_continuum_transmission(
                 break;
             }
             let epsilon = u_max - level.energy;
-            if epsilon < 0.01 {
+            if epsilon < MIN_EMISSION_ENERGY {
                 continue;
             }
 
@@ -321,7 +321,7 @@ fn exit_particle_continuum_transmission(
         for i in 1..n_points {
             let u_daughter = e_complete + i as f64 * du;
             let epsilon = u_max - u_daughter; // exit particle energy
-            if epsilon < 0.01 {
+            if epsilon < MIN_EMISSION_ENERGY {
                 continue;
             }
 
@@ -330,7 +330,7 @@ fn exit_particle_continuum_transmission(
                 for &final_parity in &[Parity::Positive, Parity::Negative] {
                     let jf = two_jf as f64 / 2.0;
                     let rho = nld.rho(daughter, u_daughter, jf, final_parity);
-                    if rho < 1e-30 {
+                    if rho < NUMERICAL_FLOOR {
                         continue;
                     }
 
@@ -343,28 +343,6 @@ fn exit_particle_continuum_transmission(
     }
 
     t_total
-}
-
-/// Determine the final parity after a gamma transition of given multipole.
-fn gamma_final_parity(parity: Parity, multipole: Multipole) -> Parity {
-    let l_order = multipole.order();
-    let is_electric = multipole.is_electric();
-    let delta_parity = if is_electric {
-        if l_order % 2 == 1 {
-            -parity.sign()
-        } else {
-            parity.sign()
-        }
-    } else if l_order % 2 == 1 {
-        parity.sign()
-    } else {
-        -parity.sign()
-    };
-    if delta_parity > 0 {
-        Parity::Positive
-    } else {
-        Parity::Negative
-    }
 }
 
 /// Check if a gamma transition of given multipole can reach (J_final, pi_final)
@@ -383,7 +361,7 @@ fn gamma_selection(
         return false;
     }
     // Parity selection
-    gamma_final_parity(parity_init, multipole) == parity_final
+    multipole.final_parity(parity_init) == parity_final
 }
 
 /// Compute gamma transmission for given compound nucleus (J, pi).
@@ -403,7 +381,7 @@ fn gamma_transmission(
 ) -> f64 {
     let mut t_gamma = 0.0;
 
-    if excitation < 0.1 {
+    if excitation < MIN_EXCITATION {
         return 0.0;
     }
 
@@ -417,7 +395,7 @@ fn gamma_transmission(
                 break; // above completeness, use continuum
             }
             let e_gamma = excitation - level.energy;
-            if e_gamma < 0.01 {
+            if e_gamma < MIN_EMISSION_ENERGY {
                 continue;
             }
 
@@ -446,7 +424,7 @@ fn gamma_transmission(
 
         for multipole in [Multipole::E1, Multipole::M1, Multipole::E2] {
             let l_order = multipole.order();
-            let final_parity = gamma_final_parity(parity, multipole);
+            let final_parity = multipole.final_parity(parity);
 
             for i in 1..n_points {
                 let e_gamma = i as f64 * de;
@@ -498,7 +476,7 @@ pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError>
                 // Entrance channel transmission
                 let t_a =
                     entrance_transmission(calc.tc_entrance, e_idx, two_j, parity, proj_spin_2j);
-                if t_a < 1e-30 {
+                if t_a < NUMERICAL_FLOOR {
                     continue;
                 }
 
@@ -545,7 +523,7 @@ pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError>
                     }
                 }
 
-                if t_total < 1e-30 {
+                if t_total < NUMERICAL_FLOOR {
                     continue;
                 }
 

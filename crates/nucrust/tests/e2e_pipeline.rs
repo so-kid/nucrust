@@ -33,7 +33,7 @@ fn e2e_fe56_neutron_transmission_coefficients() {
     // All T values should be finite and in [0, 1]
     for (i, &t) in tc.data.iter().enumerate() {
         assert!(
-            t.is_finite() && t >= 0.0 && t <= 1.0,
+            t.is_finite() && (0.0..=1.0).contains(&t),
             "T[{}] = {} out of [0,1]",
             i,
             t

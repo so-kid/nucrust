@@ -30,11 +30,17 @@ struct ReferencePoint {
     f_val: Option<f64>,
     #[serde(rename = "G")]
     g_val: Option<f64>,
+    // Fp/Gp/sigma/wronskian are present in the reference JSON but not checked
+    // by these tests (only F and G are compared).
     #[serde(rename = "Fp")]
+    #[allow(dead_code)]
     fp_val: Option<f64>,
     #[serde(rename = "Gp")]
+    #[allow(dead_code)]
     gp_val: Option<f64>,
+    #[allow(dead_code)]
     sigma: Option<f64>,
+    #[allow(dead_code)]
     wronskian: Option<f64>,
     error: Option<String>,
 }

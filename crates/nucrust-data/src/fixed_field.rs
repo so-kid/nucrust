@@ -42,6 +42,12 @@ pub fn fixed_field_str(line: &str, start: usize, end: usize) -> &str {
     line.get(start..end).unwrap_or("").trim()
 }
 
+/// Whether a line should be skipped by RIPL-3 parsers: empty or a `#`/`!` comment.
+pub fn is_skippable_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

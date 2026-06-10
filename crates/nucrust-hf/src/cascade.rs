@@ -9,6 +9,8 @@ use nucrust_core::spin::Parity;
 use nucrust_core::traits::{GammaStrength, LevelDensity, Multipole};
 use nucrust_core::{CoreError, Nuclide, Projectile, SpinParity};
 
+use crate::{MIN_EXCITATION, NUMERICAL_FLOOR};
+
 /// State of a single cascade stage.
 #[derive(Debug, Clone)]
 pub struct CascadeState {
@@ -92,7 +94,7 @@ pub fn cascade_calculation(
     };
 
     while let Some(state) = stack.pop() {
-        if state.stage >= ctx.max_stages || state.excitation < 0.1 {
+        if state.stage >= ctx.max_stages || state.excitation < MIN_EXCITATION {
             gamma_cascade(&state, ctx, &mut result);
             continue;
         }
@@ -146,7 +148,7 @@ pub fn cascade_calculation(
         );
         total_width += gamma_width;
 
-        if total_width < 1e-30 {
+        if total_width < NUMERICAL_FLOOR {
             // No decay possible (shouldn't happen normally)
             result.ground_state_population += state.weight;
             continue;
@@ -225,14 +227,14 @@ fn gamma_transmission_total(
     let mut t_gamma = 0.0;
     let n_points = 30;
     let e_max = excitation.min(20.0);
-    if e_max < 0.1 {
+    if e_max < MIN_EXCITATION {
         return 0.0;
     }
     let de = e_max / n_points as f64;
 
     for multipole in [Multipole::E1, Multipole::M1] {
         let l_order = multipole.order();
-        let is_electric = multipole.is_electric();
+        let final_parity = multipole.final_parity(parity);
 
         for i in 1..n_points {
             let e_gamma = i as f64 * de;
@@ -243,23 +245,6 @@ fn gamma_transmission_total(
 
             let f_xl = gsf.strength(nuclide, e_gamma, multipole);
             let e_factor = e_gamma.powi(2 * l_order as i32 + 1);
-
-            let delta_parity = if is_electric {
-                if l_order % 2 == 1 {
-                    -parity.sign()
-                } else {
-                    parity.sign()
-                }
-            } else if l_order % 2 == 1 {
-                parity.sign()
-            } else {
-                -parity.sign()
-            };
-            let final_parity = if delta_parity > 0 {
-                Parity::Positive
-            } else {
-                Parity::Negative
-            };
 
             let two_l = 2 * l_order as i32;
             let j_min = (two_j - two_l).max(0);
@@ -318,28 +303,12 @@ fn gamma_cascade(state: &CascadeState, ctx: &CascadeContext, result: &mut Cascad
 
             for &multipole in &[Multipole::E1, Multipole::M1, Multipole::E2] {
                 let l_order = multipole.order();
-                let is_electric = multipole.is_electric();
 
                 let f_xl = ctx.gsf.strength(&state.nuclide, e_gamma, multipole);
                 let e_factor = e_gamma.powi(2 * l_order as i32 + 1);
 
                 // Parity selection rule for gamma transition
-                let final_parity_sign = if is_electric {
-                    if l_order % 2 == 1 {
-                        -parity.sign()
-                    } else {
-                        parity.sign()
-                    }
-                } else if l_order % 2 == 1 {
-                    parity.sign()
-                } else {
-                    -parity.sign()
-                };
-                let pi_f = if final_parity_sign > 0 {
-                    Parity::Positive
-                } else {
-                    Parity::Negative
-                };
+                let pi_f = multipole.final_parity(parity);
 
                 // Angular momentum selection: |J - L| <= J_f <= J + L
                 let two_l = 2 * l_order as i32;
@@ -362,20 +331,21 @@ fn gamma_cascade(state: &CascadeState, ctx: &CascadeContext, result: &mut Cascad
         }
 
         // Emit the best gamma ray
-        result
-            .gamma_spectrum
-            .push((best_e_gamma, state.weight * best_intensity.max(1e-30)));
+        result.gamma_spectrum.push((
+            best_e_gamma,
+            state.weight * best_intensity.max(NUMERICAL_FLOOR),
+        ));
         excitation -= best_e_gamma;
         two_j = best_two_jf;
         parity = best_parity_f;
         step += 1;
 
         // If intensity is negligible, dump remaining excitation
-        if best_intensity < 1e-30 {
+        if best_intensity < NUMERICAL_FLOOR {
             if excitation > 0.01 {
                 result
                     .gamma_spectrum
-                    .push((excitation, state.weight * 1e-30));
+                    .push((excitation, state.weight * NUMERICAL_FLOOR));
             }
             break;
         }

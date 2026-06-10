@@ -10,29 +10,23 @@
 #[cfg(feature = "simd")]
 use wide::f64x4;
 
+use crate::consts::RHO_SMALL;
 use crate::coulomb::{coulomb_wave, CoulombResult};
 use crate::error::SpecialError;
-
-/// Maximum CF iterations.
-#[cfg(feature = "simd")]
-const MAX_ITER: u32 = 20_000;
-/// Convergence threshold.
-#[cfg(feature = "simd")]
-const CF_EPS: f64 = 1e-15;
 
 /// Computation region for binning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ComputeRegion {
-    /// rho > 0.5 and oscillatory (rho > 0.9 * rho_tp)
+    /// rho > RHO_SMALL and oscillatory (rho > 0.9 * rho_tp)
     Oscillatory,
-    /// rho > 0.5 and forbidden (rho < 0.9 * rho_tp)
+    /// rho > RHO_SMALL and forbidden (rho < 0.9 * rho_tp)
     Forbidden,
-    /// rho <= 0.5
+    /// rho <= RHO_SMALL
     SmallRho,
 }
 
 fn classify_region(eta: f64, rho: f64, l: u32) -> ComputeRegion {
-    if rho <= 0.5 {
+    if rho <= RHO_SMALL {
         return ComputeRegion::SmallRho;
     }
     let lf = l as f64;
@@ -115,12 +109,9 @@ fn process_scalar(
 
 #[cfg(feature = "simd")]
 mod simd_cf {
+    use crate::consts::{CF_EPS, CF_ZERO_GUARD as SMALL, MAX_CF_ITER as MAX_ITER};
     use crate::error::SpecialError;
     use wide::{f64x4, CmpLe, CmpLt};
-
-    use super::{CF_EPS, MAX_ITER};
-
-    const SMALL: f64 = 1e-50;
 
     /// f64x4 helper: element-wise reciprocal 1/x.
     #[inline]

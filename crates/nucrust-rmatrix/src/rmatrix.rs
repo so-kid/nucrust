@@ -178,14 +178,18 @@ pub fn rmatrix_cross_section(
 }
 
 /// Per-channel data computed at a specific energy.
+///
+/// `eta`, `rho`, and `is_open` are currently only used for diagnostics
+/// (via the `Debug` impl), hence the per-field `dead_code` allowances.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct ChannelData {
     /// Wave number k (fm^-1).
     pub k: f64,
     /// Sommerfeld parameter eta.
+    #[allow(dead_code)]
     pub eta: f64,
     /// Dimensionless parameter rho = k * a.
+    #[allow(dead_code)]
     pub rho: f64,
     /// Penetrability P_c.
     pub penetrability: f64,
@@ -194,6 +198,7 @@ pub(crate) struct ChannelData {
     /// Coulomb phase factor Omega_c = exp(i * sigma_l).
     pub omega: Complex64,
     /// Whether the channel is open (E_cm > 0).
+    #[allow(dead_code)]
     pub is_open: bool,
 }
 
@@ -235,28 +240,9 @@ pub(crate) fn compute_channel_data(
 
         // Compute Coulomb wave functions at channel radius
         let (penetrability, shift, omega) = if rho > 1e-10 {
-            let cw =
-                coulomb_wave(eta, rho, ch.l, 1).map_err(|_e| CoreError::ConvergenceFailure {
-                    algorithm: "coulomb_wave",
-                    iterations: 0,
-                    residual: 0.0,
-                })?;
+            let cw = coulomb_wave(eta, rho, ch.l, 1).map_err(coulomb_convergence_err)?;
 
-            let f = cw.f[0];
-            let g = cw.g[0];
-            let fp = cw.fp[0];
-            let gp = cw.gp[0];
-
-            // P_c = rho / (F^2 + G^2)
-            let f2_g2 = f * f + g * g;
-            let p = if f2_g2 > 1e-300 { rho / f2_g2 } else { 0.0 };
-
-            // S_c = rho * (F*F' + G*G') / (F^2 + G^2)
-            let s = if f2_g2 > 1e-300 {
-                rho * (f * fp + g * gp) / f2_g2
-            } else {
-                0.0
-            };
+            let (s, p) = shift_penetrability_from_waves(cw.f[0], cw.g[0], cw.fp[0], cw.gp[0], rho);
 
             // Omega_c = exp(i * sigma_l)
             let sigma_l = cw.sigma[0];
@@ -265,10 +251,7 @@ pub(crate) fn compute_channel_data(
             (p, s, omega)
         } else {
             // Very small rho: use analytic limits
-            // For l=0: P = rho, S = 0
-            // For l>0: P ~ 0, S ~ -(l+1)
-            let p = if ch.l == 0 { rho } else { 0.0 };
-            let s = if ch.l == 0 { 0.0 } else { -(ch.l as f64 + 1.0) };
+            let (s, p) = shift_penetrability_small_rho(ch.l, rho);
             (p, s, Complex64::new(1.0, 0.0))
         };
 
@@ -404,6 +387,36 @@ fn build_collision_matrix(
     u
 }
 
+/// Map a Coulomb wave function failure onto the core error type.
+fn coulomb_convergence_err<E>(_: E) -> CoreError {
+    CoreError::ConvergenceFailure {
+        algorithm: "coulomb_wave",
+        iterations: 0,
+        residual: 0.0,
+    }
+}
+
+/// Compute (S_c, P_c) from Coulomb wave function values at the channel radius:
+/// - P_c = rho / (F^2 + G^2)
+/// - S_c = rho * (F*F' + G*G') / (F^2 + G^2)
+fn shift_penetrability_from_waves(f: f64, g: f64, fp: f64, gp: f64, rho: f64) -> (f64, f64) {
+    let f2_g2 = f * f + g * g;
+    if f2_g2 > 1e-300 {
+        (rho * (f * fp + g * gp) / f2_g2, rho / f2_g2)
+    } else {
+        (0.0, 0.0)
+    }
+}
+
+/// Analytic small-rho limits: for l=0, P = rho and S = 0; for l>0, P ~ 0 and S ~ -(l+1).
+fn shift_penetrability_small_rho(l: u32, rho: f64) -> (f64, f64) {
+    if l == 0 {
+        (0.0, rho)
+    } else {
+        (-(l as f64 + 1.0), 0.0)
+    }
+}
+
 /// Compute the shift and penetrability functions from Coulomb wave functions.
 ///
 /// Returns (S_c, P_c) where:
@@ -411,32 +424,13 @@ fn build_collision_matrix(
 /// - S_c = rho * (F*F' + G*G') / (F^2 + G^2)
 pub fn shift_penetrability(l: u32, eta: f64, rho: f64) -> Result<(f64, f64), CoreError> {
     if rho < 1e-15 {
-        // Analytic limits for small rho
-        let s = if l == 0 { 0.0 } else { -(l as f64 + 1.0) };
-        let p = if l == 0 { rho } else { 0.0 };
-        return Ok((s, p));
+        return Ok(shift_penetrability_small_rho(l, rho));
     }
 
-    let cw = coulomb_wave(eta, rho, l, 1).map_err(|_e| CoreError::ConvergenceFailure {
-        algorithm: "coulomb_wave",
-        iterations: 0,
-        residual: 0.0,
-    })?;
-
-    let f = cw.f[0];
-    let g = cw.g[0];
-    let fp = cw.fp[0];
-    let gp = cw.gp[0];
-
-    let f2_g2 = f * f + g * g;
-    let p = if f2_g2 > 1e-300 { rho / f2_g2 } else { 0.0 };
-    let s = if f2_g2 > 1e-300 {
-        rho * (f * fp + g * gp) / f2_g2
-    } else {
-        0.0
-    };
-
-    Ok((s, p))
+    let cw = coulomb_wave(eta, rho, l, 1).map_err(coulomb_convergence_err)?;
+    Ok(shift_penetrability_from_waves(
+        cw.f[0], cw.g[0], cw.fp[0], cw.gp[0], rho,
+    ))
 }
 
 #[cfg(test)]
