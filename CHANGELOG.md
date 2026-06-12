@@ -9,6 +9,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+#### macOS / Apple Silicon optimization
+- `parallel` feature (rayon) for `nucrust-special`, `nucrust-optical`, `nucrust-hf`,
+  and the `nucrust` aggregate crate: energy-parallel transmission coefficients,
+  Hauser-Feshbach summation, and batch Coulomb wave functions (results identical
+  to the sequential path)
+- Documented `-C target-cpu=apple-m1` codegen tuning for
+  `aarch64-apple-darwin` builds
+- `simd` feature forwarding on the `nucrust` aggregate crate (NEON via `wide`
+  on Apple Silicon)
+- macOS (arm64) CI job running the test suite with `parallel`/`simd` features
+- Book chapter "macOS / Apple Silicon Optimization"
+
 #### Phase 0: Project Foundation
 - Initial project structure with Cargo workspace and documentation
 - Software Requirements Specification (SRS v0.2.1)

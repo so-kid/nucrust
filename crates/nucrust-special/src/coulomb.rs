@@ -611,10 +611,23 @@ pub fn coulomb_wave_batch(
     n_l: u32,
 ) -> Result<Vec<CoulombResult>, SpecialError> {
     assert_eq!(eta.len(), rho.len(), "eta and rho must have same length");
-    eta.iter()
-        .zip(rho.iter())
-        .map(|(&e, &r)| coulomb_wave(e, r, l_min, n_l))
-        .collect()
+
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        eta.par_iter()
+            .zip(rho.par_iter())
+            .map(|(&e, &r)| coulomb_wave(e, r, l_min, n_l))
+            .collect()
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    {
+        eta.iter()
+            .zip(rho.iter())
+            .map(|(&e, &r)| coulomb_wave(e, r, l_min, n_l))
+            .collect()
+    }
 }
 
 #[cfg(test)]

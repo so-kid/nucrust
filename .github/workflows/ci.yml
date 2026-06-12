@@ -38,6 +38,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features
 
+  test-macos:
+    name: Test (macOS Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo test -p nucrust --features "parallel simd"
+      - run: cargo test -p nucrust-optical --features parallel
+      - run: cargo test -p nucrust-hf --features parallel
+      - run: cargo test -p nucrust-special --features "simd parallel"
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

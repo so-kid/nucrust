@@ -21,7 +21,12 @@ serde_json = "1"
 [features]
 default = []
 simd = ["dep:wide"]
+parallel = ["dep:rayon"]
 
 [dependencies.wide]
+workspace = true
+optional = true
+
+[dependencies.rayon]
 workspace = true
 optional = true

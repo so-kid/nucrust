@@ -453,108 +453,127 @@ fn gamma_transmission(
     t_gamma
 }
 
-/// Perform Hauser-Feshbach cross section calculation.
+/// Compute the Hauser-Feshbach cross section at a single entrance energy.
 ///
-/// Returns cross sections for all energies in the entrance transmission coefficient grid.
-/// sigma_channels contains one entry per exit channel in config.exit_channels order.
-pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError> {
-    let n_e = calc.tc_entrance.energy.len();
-    let energies = calc.tc_entrance.energy.as_slice();
+/// Sums the (J, pi) contributions for the grid energy at `e_idx`.
+fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) -> HfResult {
     let proj_spin_2j = (2.0 * calc.entrance.projectile.spin()) as i32;
     let target_spin_2j = 0_i32; // Assume even-even target (ground state 0+)
     let n_exit = calc.config.exit_channels.len();
 
-    let mut results = Vec::with_capacity(n_e);
+    let mut sigma_cn = 0.0;
+    let mut sigma_exit = vec![0.0; n_exit];
 
-    for (e_idx, &energy) in energies.iter().enumerate() {
-        let mut sigma_cn = 0.0;
-        let mut sigma_exit = vec![0.0; n_exit];
+    // Loop over J, pi
+    for two_j in 0..=calc.config.two_j_max {
+        for &parity in &[Parity::Positive, Parity::Negative] {
+            // Entrance channel transmission
+            let t_a = entrance_transmission(calc.tc_entrance, e_idx, two_j, parity, proj_spin_2j);
+            if t_a < NUMERICAL_FLOOR {
+                continue;
+            }
 
-        // Loop over J, pi
-        for two_j in 0..=calc.config.two_j_max {
-            for &parity in &[Parity::Positive, Parity::Negative] {
-                // Entrance channel transmission
-                let t_a =
-                    entrance_transmission(calc.tc_entrance, e_idx, two_j, parity, proj_spin_2j);
-                if t_a < NUMERICAL_FLOOR {
-                    continue;
-                }
+            let excitation = energy + calc.entrance.q_value;
 
-                let excitation = energy + calc.entrance.q_value;
+            // Compute transmission for ALL exit channels
+            let mut t_exit = vec![0.0; n_exit];
+            let mut t_total = t_a; // entrance channel contributes to total
 
-                // Compute transmission for ALL exit channels
-                let mut t_exit = vec![0.0; n_exit];
-                let mut t_total = t_a; // entrance channel contributes to total
-
-                for (ch_idx, proj) in calc.config.exit_channels.iter().enumerate() {
-                    if *proj == Projectile::Gamma {
-                        // Gamma channel: compute from NLD + GSF
-                        let t_g = gamma_transmission(
-                            calc.gsf,
-                            calc.nld,
-                            &calc.entrance.target,
-                            excitation,
-                            two_j,
-                            parity,
-                            calc.discrete_levels,
-                        );
-                        t_exit[ch_idx] = t_g;
-                        t_total += t_g;
-                    } else {
-                        // Particle exit channel
-                        if let Some(ecd) = calc
-                            .exit_particle_channels
-                            .iter()
-                            .find(|e| e.channel.projectile == *proj)
-                        {
-                            let t_b = if ecd.separation_energy.is_some()
-                                && ecd.daughter_nld.is_some()
-                            {
-                                // Full continuum integration: ∫ T(ε) · ρ(U) dU
-                                exit_particle_continuum_transmission(ecd, excitation, two_j, parity)
-                            } else {
-                                // Fallback: direct grid lookup (no NLD integration)
-                                let exit_spin_2j = (2.0 * proj.spin()) as i32;
-                                particle_transmission(ecd.tc, e_idx, two_j, parity, exit_spin_2j)
-                            };
-                            t_exit[ch_idx] = t_b;
-                            t_total += t_b;
-                        }
+            for (ch_idx, proj) in calc.config.exit_channels.iter().enumerate() {
+                if *proj == Projectile::Gamma {
+                    // Gamma channel: compute from NLD + GSF
+                    let t_g = gamma_transmission(
+                        calc.gsf,
+                        calc.nld,
+                        &calc.entrance.target,
+                        excitation,
+                        two_j,
+                        parity,
+                        calc.discrete_levels,
+                    );
+                    t_exit[ch_idx] = t_g;
+                    t_total += t_g;
+                } else {
+                    // Particle exit channel
+                    if let Some(ecd) = calc
+                        .exit_particle_channels
+                        .iter()
+                        .find(|e| e.channel.projectile == *proj)
+                    {
+                        let t_b = if ecd.separation_energy.is_some() && ecd.daughter_nld.is_some() {
+                            // Full continuum integration: ∫ T(ε) · ρ(U) dU
+                            exit_particle_continuum_transmission(ecd, excitation, two_j, parity)
+                        } else {
+                            // Fallback: direct grid lookup (no NLD integration)
+                            let exit_spin_2j = (2.0 * proj.spin()) as i32;
+                            particle_transmission(ecd.tc, e_idx, two_j, parity, exit_spin_2j)
+                        };
+                        t_exit[ch_idx] = t_b;
+                        t_total += t_b;
                     }
                 }
+            }
 
-                if t_total < NUMERICAL_FLOOR {
-                    continue;
-                }
+            if t_total < NUMERICAL_FLOOR {
+                continue;
+            }
 
-                // Statistical weight
-                let g = (two_j as f64 + 1.0)
-                    / ((proj_spin_2j as f64 + 1.0) * (target_spin_2j as f64 + 1.0));
+            // Statistical weight
+            let g = (two_j as f64 + 1.0)
+                / ((proj_spin_2j as f64 + 1.0) * (target_spin_2j as f64 + 1.0));
 
-                // Wave number
-                let mu = nucrust_core::units::reduced_mass(
-                    calc.entrance.projectile.mass_amu(),
-                    calc.entrance.target.a() as f64,
-                );
-                let k = nucrust_core::units::wave_number(mu, energy);
-                let k_sq = k * k;
+            // Wave number
+            let mu = nucrust_core::units::reduced_mass(
+                calc.entrance.projectile.mass_amu(),
+                calc.entrance.target.a() as f64,
+            );
+            let k = nucrust_core::units::wave_number(mu, energy);
+            let k_sq = k * k;
 
-                let prefactor = PI / k_sq * g * 10.0; // 10 fm² → mb
+            let prefactor = PI / k_sq * g * 10.0; // 10 fm² → mb
 
-                sigma_cn += prefactor * t_a;
-                for (ch_idx, &t_b) in t_exit.iter().enumerate() {
-                    sigma_exit[ch_idx] += prefactor * t_a * t_b / t_total;
-                }
+            sigma_cn += prefactor * t_a;
+            for (ch_idx, &t_b) in t_exit.iter().enumerate() {
+                sigma_exit[ch_idx] += prefactor * t_a * t_b / t_total;
             }
         }
-
-        results.push(HfResult {
-            sigma_cn,
-            sigma_channels: sigma_exit,
-        });
     }
 
-    Ok(results)
+    HfResult {
+        sigma_cn,
+        sigma_channels: sigma_exit,
+    }
+}
+
+/// Perform Hauser-Feshbach cross section calculation.
+///
+/// Returns cross sections for all energies in the entrance transmission coefficient grid.
+/// sigma_channels contains one entry per exit channel in config.exit_channels order.
+///
+/// With the `parallel` feature, energies are distributed across rayon worker
+/// threads (each energy point is independent); results are identical to the
+/// sequential path.
+pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError> {
+    let energies = calc.tc_entrance.energy.as_slice();
+
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        Ok(energies
+            .par_iter()
+            .enumerate()
+            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, e_idx, energy))
+            .collect())
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    {
+        Ok(energies
+            .iter()
+            .enumerate()
+            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, e_idx, energy))
+            .collect())
+    }
 }
 
 #[cfg(test)]

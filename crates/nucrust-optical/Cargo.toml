@@ -12,6 +12,7 @@ nucrust-special = { workspace = true }
 nucrust-data = { workspace = true }
 num-complex = { workspace = true }
 faer = { workspace = true }
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx = { workspace = true }
@@ -19,3 +20,4 @@ proptest = { workspace = true }
 
 [features]
 default = []
+parallel = ["dep:rayon"]

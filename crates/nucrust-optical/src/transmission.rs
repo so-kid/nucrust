@@ -8,6 +8,60 @@ use nucrust_core::{Channel, CoreError, EnergyGrid, TransmissionCoeffs};
 
 use crate::numerov::numerov_integrate;
 
+/// Compute T_{l,j} for both spin-orbit couplings (j = l ∓ 1/2) at one energy.
+///
+/// Returns `[T_{l-1/2}, T_{l+1/2}]`; the j < 0 coupling (l = 0) stays 0.
+fn transmission_at_energy(
+    potential: &dyn OpticalPotential,
+    channel: &Channel,
+    energy: f64,
+    l: u32,
+    config: &NumerovConfig,
+) -> Result<[f64; 2], CoreError> {
+    let mut t_lj = [0.0_f64; 2];
+    for (j_idx, &dj) in [-(0.5_f64), 0.5].iter().enumerate() {
+        let j = l as f64 + dj;
+        if j < 0.0 {
+            continue;
+        }
+        let s_lj = numerov_integrate(potential, channel, energy, l, j, config)?;
+        t_lj[j_idx] = (1.0 - s_lj.norm_sqr()).clamp(0.0, 1.0);
+    }
+    Ok(t_lj)
+}
+
+/// Compute T_{l,j} for all energies of one partial wave.
+///
+/// With the `parallel` feature, energies are distributed across rayon worker
+/// threads (each Numerov integration is independent); results are identical
+/// to the sequential path.
+fn transmission_for_partial_wave(
+    potential: &dyn OpticalPotential,
+    channel: &Channel,
+    energies: &EnergyGrid,
+    l: u32,
+    config: &NumerovConfig,
+) -> Result<Vec<[f64; 2]>, CoreError> {
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        energies
+            .as_slice()
+            .par_iter()
+            .map(|&e| transmission_at_energy(potential, channel, e, l, config))
+            .collect()
+    }
+
+    #[cfg(not(feature = "parallel"))]
+    {
+        energies
+            .as_slice()
+            .iter()
+            .map(|&e| transmission_at_energy(potential, channel, e, l, config))
+            .collect()
+    }
+}
+
 /// Compute transmission coefficients for all partial waves and energies.
 ///
 /// For each partial wave l, computes j = l-1/2 and j = l+1/2 (spin-orbit splitting).
@@ -23,22 +77,8 @@ pub fn compute_transmission_coeffs(
     let mut all_data: Vec<Vec<[f64; 2]>> = Vec::new(); // [l][e_index] -> [T_{l-1/2}, T_{l+1/2}]
 
     for l in 0..=config.max_l {
-        let mut tl_data = vec![[0.0_f64; 2]; n_e];
-        let mut max_tl = 0.0_f64;
-
-        for (j_idx, &dj) in [-(0.5_f64), 0.5].iter().enumerate() {
-            let j = l as f64 + dj;
-            if j < 0.0 {
-                continue;
-            }
-
-            for (e_idx, &e) in energies.as_slice().iter().enumerate() {
-                let s_lj = numerov_integrate(potential, channel, e, l, j, config)?;
-                let t_lj = (1.0 - s_lj.norm_sqr()).clamp(0.0, 1.0);
-                tl_data[e_idx][j_idx] = t_lj;
-                max_tl = max_tl.max(t_lj);
-            }
-        }
+        let tl_data = transmission_for_partial_wave(potential, channel, energies, l, config)?;
+        let max_tl = tl_data.iter().flatten().fold(0.0_f64, |acc, &t| acc.max(t));
 
         all_data.push(tl_data);
         l_max_actual = l;

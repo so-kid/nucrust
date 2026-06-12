@@ -28,3 +28,12 @@ path = "src/main.rs"
 
 [features]
 default = []
+# CPU parallelism via rayon for transmission coefficients, HF summation,
+# and batch Coulomb functions. Primary acceleration path on macOS (no CUDA).
+parallel = [
+    "nucrust-special/parallel",
+    "nucrust-optical/parallel",
+    "nucrust-hf/parallel",
+]
+# SIMD batch Coulomb functions (wide: AVX2 on x86_64, NEON on aarch64).
+simd = ["nucrust-special/simd"]

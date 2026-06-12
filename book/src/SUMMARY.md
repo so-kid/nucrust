@@ -18,6 +18,7 @@
 - [R-matrix Calculations](./rmatrix.md)
 - [Astrophysical Reaction Rates](./astro.md)
 - [GPU Acceleration](./gpu.md)
+- [macOS / Apple Silicon Optimization](./macos.md)
 
 # Reference
 
