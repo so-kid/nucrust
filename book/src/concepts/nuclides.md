@@ -4,7 +4,7 @@
 
 A `Nuclide` represents a nucleus with proton number Z and mass number A:
 
-```rust
+```rust,ignore
 use nucrust::nucrust_core::Nuclide;
 
 let fe56 = Nuclide::new(26, 56).unwrap();
@@ -35,7 +35,7 @@ Each variant provides mass, spin, and charge via methods.
 
 A `Channel` combines a projectile with a target nuclide:
 
-```rust
+```rust,ignore
 use nucrust::nucrust_core::{Channel, Nuclide, Projectile};
 
 let channel = Channel {
@@ -49,12 +49,13 @@ let channel = Channel {
 
 Quantum numbers use half-integer representation (2J stored as integer):
 
-```rust
-use nucrust::nucrust_core::{SpinParity, Parity};
+```rust,ignore
+use nucrust::nucrust_core::{Parity, SpinParity};
 
-let jp = SpinParity::new(5, Parity::Negative);  // J=5/2⁻
+let jp = SpinParity::new(5, Parity::Negative)?;  // J = 5/2⁻ (2J = 5)
 assert_eq!(jp.two_j, 5);
-assert_eq!(jp.j(), 2.5);
+let j = jp.two_j as f64 / 2.0;                   // 2.5
 ```
 
-The `triangle_condition()` method checks angular momentum coupling validity.
+The associated function `SpinParity::triangle_condition(two_j1, two_j2, two_j3)`
+checks angular momentum coupling validity.

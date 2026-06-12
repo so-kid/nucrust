@@ -21,7 +21,7 @@ nucrust parses the following RIPL-3 data files:
 
 ## Usage
 
-```rust
+```rust,ignore
 use nucrust::nucrust_data::ripl3;
 
 // Parse discrete levels for Z=26
@@ -37,7 +37,7 @@ for iso in &isotopes {
 
 nucrust expects RIPL-3 data in the standard directory layout:
 
-```
+```text
 ripl3/
 ├── levels/
 │   ├── z001.dat

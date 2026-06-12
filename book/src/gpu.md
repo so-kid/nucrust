@@ -10,16 +10,20 @@ nucrust provides CUDA-based GPU acceleration for batch nuclear reaction calculat
 
 ## Using GPU Backend
 
-```rust
-use nucrust::nucrust_core::ComputeBackend;
-use nucrust::nucrust_gpu::GpuBackend;
+The GPU backend lives in the `nucrust-gpu` crate (it is not re-exported by
+the aggregate `nucrust` crate). Add it as a dependency with the `cuda`
+feature enabled:
+
+```rust,ignore
+use nucrust_core::backend::ComputeBackend;
+use nucrust_gpu::GpuBackend;
 
 let gpu = GpuBackend::new(0)?;  // GPU device 0
 
 // Same ComputeBackend trait as CpuBackend
-let tc = gpu.batch_numerov(&tasks, &config)?;
+let tc = gpu.batch_numerov(&tasks, &numerov_config)?;
 let xs = gpu.hf_summation(&tc, &nld_params, &gsf_params, &hf_config)?;
-let rates = gpu.macs_integrate(&xs, &macs_config)?;
+let rates = gpu.macs_integrate(&[xs], &temperatures, &macs_config)?;
 ```
 
 Via CLI:
@@ -66,11 +70,17 @@ Measured on NVIDIA L4 GPU:
 
 For end-to-end GPU calculation (Numerov → HF → MACS), use the batch pipeline:
 
-```rust
-use nucrust::nucrust_gpu::pipeline::{batch_pipeline, PipelineConfig};
+```rust,ignore
+use cudarc::driver::CudaContext;
+use nucrust_gpu::pipeline::{batch_pipeline, PipelineConfig};
+
+let ctx = CudaContext::new(0)?;
+let stream = ctx.new_stream()?;
 
 let config = PipelineConfig::default();
-let results = batch_pipeline(&gpu, &reactions, &config)?;
+let result = batch_pipeline(&ctx, &stream, &energies, &config)?;
+// result.tc (transmission coefficients), result.xs (cross sections),
+// result.macs (MACS per temperature, mb)
 ```
 
 This keeps data on the GPU between stages, minimizing host-device transfers.

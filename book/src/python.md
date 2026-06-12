@@ -2,6 +2,11 @@
 
 nucrust provides Python bindings via PyO3 and rust-numpy, exposing core calculation functions to Python.
 
+> **Note:** The current bindings are neutron-induced reactions only, with
+> built-in default physics models (Koning-Delaroche optical potential,
+> constant-temperature level density, standard Lorentzian γ-strength).
+> Projectile and model selection will be exposed in a future release.
+
 ## Installation
 
 ```bash
@@ -10,64 +15,98 @@ cd crates/nucrust-python
 maturin develop --release
 ```
 
-## Available Functions
-
-### `calc_transmission_coeffs(z, a, projectile, energies)`
-
-Compute optical model transmission coefficients.
+The importable module is named `nucrust_python`:
 
 ```python
-import nucrust
-import numpy as np
+import nucrust_python
+```
 
-energies = np.logspace(-3, 1.5, 200)
-result = nucrust.calc_transmission_coeffs(
+## Classes
+
+### `Nuclide(z, a)`
+
+```python
+nuc = nucrust_python.Nuclide(26, 56)
+print(nuc.z, nuc.a, nuc.n)   # 26 56 30
+```
+
+### `CrossSection`
+
+Returned by `calc_hf_cross_section`. Arrays are accessed via methods:
+
+- `energies()` — energy grid (MeV) as a NumPy array
+- `sigma_total()` — compound nucleus formation cross section (mb)
+- `sigma_elastic()` — elastic cross section (mb)
+- `sigma_reaction()` — reaction cross section (mb)
+- `n_energies` — number of energy points (property)
+
+### `ReactionRate`
+
+Returned by `calc_macs`:
+
+- `temperatures()` — temperature grid (GK) as a NumPy array
+- `na_sigma_v()` — NA⟨σv⟩ values
+- `macs()` — MACS values (mb), or `None` if unavailable
+
+## Functions
+
+### `calc_transmission_coeffs(z, a, e_min, e_max, n_energies, l_max=20)`
+
+Compute neutron optical model transmission coefficients on a logarithmic
+energy grid. Returns a tuple `(energies, t_l0)` of NumPy arrays, where
+`t_l0` is the s-wave (l = 0) transmission coefficient.
+
+```python
+import nucrust_python
+
+energies, t_l0 = nucrust_python.calc_transmission_coeffs(
     z=26, a=56,
-    projectile="n",
-    energies=energies,
+    e_min=0.001, e_max=10.0,
+    n_energies=200,
 )
 ```
 
-### `calc_hf_cross_section(z, a, projectile, energies, nld, gsf)`
+### `calc_hf_cross_section(z, a, e_min, e_max, n_energies, q_value=0.0)`
 
-Compute Hauser-Feshbach cross sections.
+Compute Hauser-Feshbach cross sections for neutron capture. Returns a
+`CrossSection` object.
 
 ```python
-xs = nucrust.calc_hf_cross_section(
+xs = nucrust_python.calc_hf_cross_section(
     z=26, a=56,
-    projectile="n",
-    energies=energies,
-    nld="gilbert-cameron",
-    gsf="eglo",
+    e_min=0.001, e_max=1.0,
+    n_energies=100,
+    q_value=7.65,
 )
-print(xs["sigma_total"])   # numpy array
-print(xs["sigma_reaction"])
+print(xs.sigma_total())     # numpy array (mb)
+print(xs.sigma_reaction())
 ```
 
-### `calc_macs(energies, cross_sections, kt)`
+### `calc_macs(z, a, e_min=0.001, e_max=1.0, n_energies=100, q_value=0.0)`
 
-Compute Maxwellian-Averaged Cross Section at temperature kT.
+Compute the Maxwellian-averaged cross section and reaction rate. Internally
+runs `calc_hf_cross_section` and integrates over the default temperature
+grid. Returns a `ReactionRate` object.
 
 ```python
-macs = nucrust.calc_macs(
-    energies=energies,
-    cross_sections=sigma,
-    kt=0.0253,  # kT = 30 keV in MeV
-)
+rate = nucrust_python.calc_macs(z=26, a=56, q_value=7.65)
+print(rate.temperatures())  # GK
+print(rate.macs())          # mb
 ```
 
 ### `fit_reaclib(temperatures, rates)`
 
-Fit reaction rates to REACLIB 7-parameter format.
+Fit reaction rates to the REACLIB 7-parameter format. Returns a list of the
+7 fitted coefficients `[a0, a1, ..., a6]`.
 
 ```python
-params = nucrust.fit_reaclib(
-    temperatures=temps,
-    rates=na_sigma_v,
+coeffs = nucrust_python.fit_reaclib(
+    temperatures=list(rate.temperatures()),
+    rates=list(rate.na_sigma_v()),
 )
-# params is a dict with keys "a0" through "a6"
+a0, a1, a2, a3, a4, a5, a6 = coeffs
 ```
 
 ## NumPy Integration
 
-All array inputs and outputs use NumPy arrays. Input arrays are zero-copy when possible.
+All array outputs are NumPy arrays created via rust-numpy.

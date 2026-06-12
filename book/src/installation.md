@@ -2,14 +2,14 @@
 
 ## Requirements
 
-- **Rust** 1.75 or later (2024 edition)
+- **Rust** 1.75 or later (2021 edition)
 - **HDF5 1.10.x** (optional, for HDF5 I/O feature)
 - **CUDA Toolkit** (optional, for GPU acceleration)
 
 ## Building from Source
 
 ```bash
-git clone https://github.com/nucrust/nucrust.git
+git clone https://github.com/so-kid/nucrust.git
 cd nucrust
 cargo build --workspace --release
 ```
@@ -18,17 +18,22 @@ The CLI binary will be at `target/release/nucrust`.
 
 ## Feature Flags
 
-| Feature | Description | Default |
-|---------|-------------|---------|
-| `cuda` | Enable GPU acceleration (requires CUDA) | off |
-| `hdf5_io` | Enable HDF5 file I/O | off |
-| `simd` | Enable SIMD-optimized Coulomb functions | off |
+Features are defined on individual crates (the aggregate `nucrust` crate has
+no feature flags of its own):
 
-Build with specific features:
+| Feature | Crate | Description | Default |
+|---------|-------|-------------|---------|
+| `parallel` | `nucrust-core` | rayon-based CPU parallelism | **on** |
+| `cuda` | `nucrust-gpu` | GPU acceleration (requires CUDA) | off |
+| `hdf5_io` | `nucrust-data` | HDF5 file I/O | off |
+| `simd` | `nucrust-special` | SIMD-optimized Coulomb functions | off |
+
+Build with specific features by targeting the crate that defines them:
 
 ```bash
-cargo build --release --features cuda
-cargo build --release --features hdf5_io
+cargo build --release -p nucrust-gpu --features cuda
+cargo build --release -p nucrust-data --features hdf5_io
+cargo test --workspace --all-features    # everything at once
 ```
 
 ## HDF5 Setup

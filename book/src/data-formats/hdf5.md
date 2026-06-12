@@ -4,7 +4,7 @@ HDF5 output is available with the `hdf5_io` feature flag. Requires HDF5 1.10.x.
 
 ## Cross Section Output
 
-```
+```text
 /energy           [n_e]    f64   Energy grid (MeV)
 /sigma_total      [n_e]    f64   Total cross section (mb)
 /sigma_elastic    [n_e]    f64   Elastic cross section (mb)
@@ -13,7 +13,7 @@ HDF5 output is available with the `hdf5_io` feature flag. Requires HDF5 1.10.x.
 
 ## Reaction Rate Output
 
-```
+```text
 /rate_0/
   /temperatures   [n_t]    f64   Temperature grid (GK)
   /na_sigma_v     [n_t]    f64   NA<σv> (cm³/s/mol)
@@ -24,7 +24,7 @@ HDF5 output is available with the `hdf5_io` feature flag. Requires HDF5 1.10.x.
 
 ## Usage
 
-```rust
+```rust,ignore
 use nucrust::nucrust_data::hdf5_io::{write_cross_section, read_cross_section};
 use std::path::Path;
 

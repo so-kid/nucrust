@@ -21,6 +21,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - macOS (arm64) CI job running the test suite with `parallel`/`simd` features
 - Book chapter "macOS / Apple Silicon Optimization"
 
+#### Documentation overhaul
+- Root `README.md` with project status, build instructions, and workspace overview
+- `LICENSE-MIT` and `LICENSE-APACHE` files matching the declared dual license
+- Compile-checked quickstart example (`crates/nucrust/examples/quickstart.rs`)
+- mdBook CI job (`mdbook build` + `mdbook test`)
+- Freeze notices on the historical design documents in `docs/`
+
+#### Documentation fixes
+- Book API examples corrected to match the implemented APIs
+  (`HfCalculation`/`HfConfig`, astro function signatures, R-matrix
+  `BoundaryCondition` and fitting signatures, GPU `batch_pipeline`,
+  `CubicSpline::natural`, `SpinParity`)
+- Python bindings chapter rewritten for the actual module
+  (`import nucrust_python`, tuple/object return types, neutron-only note)
+- CLI reference now documents implementation status (only `calc` with
+  `json`/`table` output is functional)
+- Repository URLs corrected to `so-kid/nucrust` (Cargo.toml, book.toml,
+  installation chapter); `docs/reserch_RQ01-09.md` renamed to
+  `docs/research_RQ01-09.md`
+- `CLAUDE.md` updated to reflect the implemented state (cudarc 0.16, actual
+  dependency graph, parser approach, test infrastructure status)
+
 #### Phase 0: Project Foundation
 - Initial project structure with Cargo workspace and documentation
 - Software Requirements Specification (SRS v0.2.1)

@@ -12,7 +12,7 @@ where T₉ is the temperature in units of 10⁹ K.
 
 ## Reading REACLIB
 
-```rust
+```rust,ignore
 use nucrust::nucrust_data::reaclib::{parse_reaclib, ReaclibEntry};
 
 let text = std::fs::read_to_string("rates.dat")?;
@@ -29,7 +29,7 @@ for entry in &entries {
 
 Fit computed reaction rates to REACLIB format:
 
-```rust
+```rust,ignore
 use nucrust::nucrust_data::reaclib::fit_reaclib_params;
 
 let temperatures = vec![0.1, 0.5, 1.0, 3.0, 10.0]; // GK

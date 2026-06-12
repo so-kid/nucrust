@@ -71,3 +71,14 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+
+  book:
+    name: Book (mdBook)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+      - run: mdbook build
+      - run: mdbook test

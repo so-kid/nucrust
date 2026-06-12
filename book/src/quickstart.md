@@ -33,7 +33,8 @@ Run the calculation:
 nucrust calc --config fe56_neutron.toml
 ```
 
-This computes neutron transmission coefficients for ⁵⁶Fe and writes results to `results/`.
+This computes neutron transmission coefficients for ⁵⁶Fe and writes results to
+the output directory (`output/` by default; override with `--output <DIR>`).
 
 ## Rust API: Basic Usage
 
@@ -44,7 +45,10 @@ Add nucrust to your `Cargo.toml`:
 nucrust = { path = "path/to/nucrust/crates/nucrust" }
 ```
 
-```rust
+This example is kept compiling as `crates/nucrust/examples/quickstart.rs`;
+run it with `cargo run -p nucrust --example quickstart`.
+
+```rust,ignore
 use nucrust::nucrust_core::{Nuclide, Projectile, Channel, EnergyGrid};
 use nucrust::nucrust_core::backend::NumerovConfig;
 use nucrust::cpu_backend::cpu_transmission_coeffs;
@@ -66,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tc = cpu_transmission_coeffs(&channel, &energies, &config)?;
 
     println!("l_max = {}", tc.l_max);
-    println!("T(l=0, E=1 MeV) = {:.6e}", tc.data[0]);
+    println!("T at first grid point = {:.6e}", tc.data[0]);
 
     Ok(())
 }
@@ -75,14 +79,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Python API
 
 ```python
-import nucrust
+import nucrust_python
 
-# Compute transmission coefficients
-result = nucrust.calc_transmission_coeffs(
+# Compute neutron transmission coefficients (log energy grid)
+energies, t_l0 = nucrust_python.calc_transmission_coeffs(
     z=26, a=56,
-    projectile="n",
-    energies=[0.001, 0.01, 0.1, 1.0, 10.0],
+    e_min=0.001, e_max=10.0,
+    n_energies=100,
 )
-print(f"l_max = {result['l_max']}")
-print(f"T_l0 = {result['transmission']}")
+print(f"T_l0 at first grid point = {t_l0[0]:.6e}")
 ```
+
+See [Python Bindings](./python.md) for the full API.

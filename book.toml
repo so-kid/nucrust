@@ -8,4 +8,4 @@ src = "book/src"
 build-dir = "book/build"
 
 [output.html]
-git-repository-url = "https://github.com/nucrust/nucrust"
+git-repository-url = "https://github.com/so-kid/nucrust"

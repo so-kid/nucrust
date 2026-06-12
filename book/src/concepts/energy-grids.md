@@ -4,7 +4,7 @@
 
 The `EnergyGrid` type ensures energy values are sorted and strictly positive:
 
-```rust
+```rust,ignore
 use nucrust::nucrust_core::EnergyGrid;
 
 // Logarithmic spacing (recommended for cross sections)
@@ -23,14 +23,15 @@ Logarithmic spacing is recommended for cross section calculations, as nuclear cr
 
 For interpolation between grid points, nucrust provides natural cubic splines:
 
-```rust
+```rust,ignore
 use nucrust::nucrust_core::spline::CubicSpline;
 
 let x = vec![0.0, 1.0, 2.0, 3.0];
 let y = vec![0.0, 1.0, 4.0, 9.0];
-let spline = CubicSpline::new(&x, &y).unwrap();
+let spline = CubicSpline::natural(&x, &y)?;
 
 let y_interp = spline.evaluate(1.5);
+let y_batch = spline.evaluate_batch(&[0.5, 1.5, 2.5]);
 ```
 
 Splines are used throughout nucrust for interpolating transmission coefficients, level densities, and cross sections at arbitrary energies.

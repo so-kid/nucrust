@@ -4,24 +4,28 @@ nucrust is organized as a Cargo workspace with 10 crates, each handling a specif
 
 ## Dependency Graph
 
+Arrows point from each crate to its internal dependencies:
+
+```text
+nucrust-core ──────── types, traits, constants (no internal deps)
+
+nucrust-special ───── Coulomb wave functions     ← core
+nucrust-data ──────── RIPL-3 / REACLIB / HDF5    ← core
+
+nucrust-optical ───── optical model, Numerov     ← core, special, data
+nucrust-hf ────────── Hauser-Feshbach model      ← core, optical, data
+nucrust-rmatrix ───── R-matrix theory, fitting   ← core, special, data
+
+nucrust-astro ─────── MACS, rates, S-factors     ← core, data, hf, rmatrix
+nucrust-gpu ───────── CUDA backend (standalone)  ← core, special
+
+nucrust-python ────── PyO3 bindings              ← all CPU crates
+nucrust ───────────── aggregator + CLI           ← all CPU crates
 ```
-nucrust-core          (types, traits, constants)
-    ↓
-nucrust-special       (Coulomb wave functions)
-    ↓
-nucrust-data          (RIPL-3, REACLIB, HDF5 parsers)
-nucrust-optical       (optical model, Numerov integration)
-    ↓
-nucrust-hf            (Hauser-Feshbach statistical model)
-nucrust-rmatrix       (R-matrix theory, fitting)
-    ↓
-nucrust-astro         (MACS, reaction rates, S-factors)
-    ↓
-nucrust-gpu           (CUDA kernels, GPU backend)
-    ↓
-nucrust-python        (PyO3 bindings)
-nucrust               (aggregator crate, CLI)
-```
+
+Note that `nucrust-gpu` is an independent compute backend: it depends only on
+`nucrust-core` and `nucrust-special`, and is *not* re-exported by the
+aggregate `nucrust` crate (enable it directly with its `cuda` feature).
 
 ## Crate Summaries
 

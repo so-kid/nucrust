@@ -1,5 +1,7 @@
 # nucrust — Software Requirements Specification
 
+> **⚠️ ステータス: 凍結（歴史的文書）** — 本文書は実装開始前の調査・設計時スナップショットであり、以後更新されません。現在の仕様は `book/`（mdBook ユーザーガイド）と rustdoc、実装状況は `CHANGELOG.md` / `task.md` を参照してください。（2026-06-12 注記）
+
 > **Rust製原子核反応率計算フレームワーク**
 > GPU加速 Hauser-Feshbach / R-matrix 計算エンジン
 
