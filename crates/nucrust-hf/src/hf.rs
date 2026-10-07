@@ -117,27 +117,61 @@ pub struct HfCalculation<'a> {
     pub discrete_levels: Option<&'a DiscreteLevels>,
 }
 
+/// Spin and parity of the target ground state.
+///
+/// Target spins are not yet carried by `Nuclide`; an even-even 0+ ground state
+/// is assumed (correct for the Fe-56 benchmark and all even-even targets).
+const TARGET_TWO_SPIN: i32 = 0;
+const TARGET_PARITY: Parity = Parity::Positive;
+
+/// Parity (-1)^l of an orbital angular momentum l.
+fn orbital_parity(l: u32) -> Parity {
+    if l % 2 == 0 {
+        Parity::Positive
+    } else {
+        Parity::Negative
+    }
+}
+
 /// Compute the entrance channel transmission for a given (J, pi).
 ///
-/// T_a(E, J, pi) = sum over l, j satisfying:
-/// - triangle condition: |J - j_a| <= l <= J + j_a
-/// - parity selection: (-1)^l * pi_a * pi_A = pi
+/// T_a(E, J, pi) = sum of T_{lj}(E) over all (l, j) with
+/// - j-I coupling: |j - I| <= J <= j + I (I = target spin)
+/// - parity selection: (-1)^l * pi_A = pi (nucleons and alphas have positive intrinsic parity)
 fn entrance_transmission(
     tc: &TransmissionCoeffs,
     e_idx: usize,
     two_j: i32,
-    _parity: Parity,
+    parity: Parity,
     proj_spin_2j: i32,
 ) -> f64 {
-    particle_transmission(tc, e_idx, two_j, _parity, proj_spin_2j)
+    particle_transmission(
+        tc,
+        e_idx,
+        two_j,
+        parity,
+        proj_spin_2j,
+        TARGET_TWO_SPIN,
+        TARGET_PARITY,
+    )
 }
 
-/// Sum a per-(l, j) transmission contribution over all partial waves
-/// satisfying the triangle condition |two_j - proj_spin_2j| <= 2*l <= two_j + proj_spin_2j.
+/// Sum a per-(l, j) transmission contribution over all partial waves that
+/// couple to the compound state (J, pi) together with a residual/target state
+/// (I, pi_I).
+///
+/// For a spin-1/2 particle the stored j = l -+ 1/2 values are used directly and
+/// each (l, j) contributes once if |j - I| <= J <= j + I and
+/// (-1)^l pi_I = pi. For a spin-0 particle j = l and the j_index = 1 slot holds T_l.
+/// Summed over J with weight (2J+1) this reproduces
+/// sigma_CN = pi/k^2 * sum_{lj} (2j+1)/(2s+1) T_{lj}.
 fn sum_over_partial_waves<F>(
     tc: &TransmissionCoeffs,
     two_j: i32,
+    parity: Parity,
     proj_spin_2j: i32,
+    two_i: i32,
+    parity_i: Parity,
     mut t_of: F,
 ) -> f64
 where
@@ -146,18 +180,28 @@ where
     let mut t_sum = 0.0;
 
     for l in 0..=tc.l_max {
+        if orbital_parity(l) * parity_i != parity {
+            continue;
+        }
         let l_i = l as i32;
-        for j_idx in 0..2_usize {
-            let two_j_particle = 2 * l_i + (2 * j_idx as i32 - 1);
+        for j_idx in 0..TransmissionCoeffs::J_SLOTS {
+            let two_j_particle = if proj_spin_2j == 0 {
+                if j_idx == 0 {
+                    continue; // spin-0: single j = l, stored in slot 1
+                }
+                2 * l_i
+            } else {
+                2 * l_i + (2 * j_idx as i32 - 1)
+            };
             if two_j_particle < 0 {
                 continue;
             }
 
-            // Triangle condition: |two_j - proj_spin_2j| <= 2*l <= two_j + proj_spin_2j
-            let two_l = 2 * l_i;
-            let diff = (two_j - proj_spin_2j).abs();
-            let sum = two_j + proj_spin_2j;
-            if two_l < diff || two_l > sum {
+            // Angular momentum coupling J = j + I.
+            if (two_j_particle + two_i + two_j) % 2 != 0
+                || two_j < (two_j_particle - two_i).abs()
+                || two_j > two_j_particle + two_i
+            {
                 continue;
             }
 
@@ -168,26 +212,34 @@ where
     t_sum
 }
 
-/// Compute particle channel transmission for a given (J, pi) at a grid energy index.
-///
-/// Sums T_{lj}(E) over all (l, j) satisfying the triangle condition
-/// |J - s_proj| <= l <= J + s_proj and parity selection.
+/// Compute particle channel transmission for a given (J, pi) at a grid energy index,
+/// leaving the residual nucleus in a state of spin `two_i / 2` and parity `parity_i`.
 fn particle_transmission(
     tc: &TransmissionCoeffs,
     e_idx: usize,
     two_j: i32,
-    _parity: Parity,
+    parity: Parity,
     proj_spin_2j: i32,
+    two_i: i32,
+    parity_i: Parity,
 ) -> f64 {
     let n_e = tc.energy.len();
-    sum_over_partial_waves(tc, two_j, proj_spin_2j, |l, j_idx| {
-        let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
-        if flat_idx < tc.data.len() {
-            tc.data[flat_idx]
-        } else {
-            0.0
-        }
-    })
+    sum_over_partial_waves(
+        tc,
+        two_j,
+        parity,
+        proj_spin_2j,
+        two_i,
+        parity_i,
+        |l, j_idx| {
+            let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
+            if flat_idx < tc.data.len() {
+                tc.data[flat_idx]
+            } else {
+                0.0
+            }
+        },
+    )
 }
 
 /// Interpolate T_{lj}(ε) at arbitrary energy ε from the transmission coefficient grid.
@@ -242,19 +294,28 @@ fn interpolate_transmission(tc: &TransmissionCoeffs, energy: f64, l: u32, j_idx:
     t0 + t * (t1 - t0)
 }
 
-/// Sum interpolated T_{lj}(ε) over all (l, j) satisfying triangle condition.
+/// Sum interpolated T_{lj}(ε) over all (l, j) coupling (J, pi) to a residual state (I, pi_I).
 fn particle_transmission_at_energy(
     tc: &TransmissionCoeffs,
     energy: f64,
     two_j: i32,
+    parity: Parity,
     proj_spin_2j: i32,
+    two_i: i32,
+    parity_i: Parity,
 ) -> f64 {
     if energy <= 0.0 {
         return 0.0;
     }
-    sum_over_partial_waves(tc, two_j, proj_spin_2j, |l, j_idx| {
-        interpolate_transmission(tc, energy, l, j_idx)
-    })
+    sum_over_partial_waves(
+        tc,
+        two_j,
+        parity,
+        proj_spin_2j,
+        two_i,
+        parity_i,
+        |l, j_idx| interpolate_transmission(tc, energy, l, j_idx),
+    )
 }
 
 /// Compute exit particle transmission with continuum level density integration.
@@ -267,7 +328,7 @@ fn exit_particle_continuum_transmission(
     ecd: &ExitChannelData,
     excitation: f64,
     two_j: i32,
-    _parity: Parity,
+    parity: Parity,
 ) -> f64 {
     let sep_e = match ecd.separation_energy {
         Some(s) => s,
@@ -305,10 +366,17 @@ fn exit_particle_continuum_transmission(
                 continue;
             }
 
-            // Sum T over all partial waves at this exit energy.
-            // Angular momentum coupling (J = j_exit + J_daughter) is implicitly
-            // handled by the triangle condition in particle_transmission_at_energy.
-            t_total += particle_transmission_at_energy(ecd.tc, epsilon, two_j, exit_spin_2j);
+            // Sum T over all partial waves coupling J = j_exit + J_daughter.
+            let two_jf = (2.0 * level.spin).round() as i32;
+            t_total += particle_transmission_at_energy(
+                ecd.tc,
+                epsilon,
+                two_j,
+                parity,
+                exit_spin_2j,
+                two_jf,
+                level.parity,
+            );
         }
     }
 
@@ -325,8 +393,11 @@ fn exit_particle_continuum_transmission(
                 continue;
             }
 
-            // Sum over final spins and parities of daughter
-            for two_jf in (0..=two_j + exit_spin_2j).step_by(2) {
+            // Sum over final spins and parities of daughter: integer spins for
+            // even-A, half-integer for odd-A daughters, up to J + j_max.
+            let two_jf_min = i32::from(daughter.a() % 2);
+            let two_jf_max = two_j + 2 * ecd.tc.l_max as i32 + exit_spin_2j;
+            for two_jf in (two_jf_min..=two_jf_max).step_by(2) {
                 for &final_parity in &[Parity::Positive, Parity::Negative] {
                     let jf = two_jf as f64 / 2.0;
                     let rho = nld.rho(daughter, u_daughter, jf, final_parity);
@@ -334,8 +405,15 @@ fn exit_particle_continuum_transmission(
                         continue;
                     }
 
-                    let t_at_eps =
-                        particle_transmission_at_energy(ecd.tc, epsilon, two_j, exit_spin_2j);
+                    let t_at_eps = particle_transmission_at_energy(
+                        ecd.tc,
+                        epsilon,
+                        two_j,
+                        parity,
+                        exit_spin_2j,
+                        two_jf,
+                        final_parity,
+                    );
                     t_total += t_at_eps * rho * du;
                 }
             }
@@ -369,7 +447,11 @@ fn gamma_selection(
 /// When discrete levels are provided, uses them below E_complete and the
 /// continuous NLD model above E_complete. Otherwise, uses NLD for all energies.
 ///
-/// T_gamma = Σ_discrete + ∫_continuum f_{XL}(E_γ) · E_γ^{2L+1} · ρ(U-E_γ, J', π') dE_γ
+/// T_gamma = 2π [Σ_discrete f_{XL} E_γ^{2L+1}
+///              + ∫_continuum f_{XL}(E_γ) · E_γ^{2L+1} · ρ(U-E_γ, J', π') dE_γ]
+///
+/// with f_{XL} in MeV^{-(2L+1)} and ρ in MeV⁻¹ (dimensionless T_gamma).
+/// `nuclide` is the emitting (compound) nucleus.
 fn gamma_transmission(
     gsf: &dyn GammaStrength,
     nld: &dyn LevelDensity,
@@ -438,7 +520,8 @@ fn gamma_transmission(
 
                 // Sum over final spins J' reachable by multipole L
                 let two_l = 2 * l_order as i32;
-                let j_min = (two_j - two_l).max(0);
+                // |J - L|, not max(J - L, 0): keeps half-integer J' for half-integer J.
+                let j_min = (two_j - two_l).abs();
                 let j_max = two_j + two_l;
 
                 for two_jf in (j_min..=j_max).step_by(2) {
@@ -450,7 +533,7 @@ fn gamma_transmission(
         }
     }
 
-    t_gamma
+    2.0 * PI * t_gamma
 }
 
 /// Compute the Hauser-Feshbach cross section at a single entrance energy.
@@ -458,8 +541,23 @@ fn gamma_transmission(
 /// Sums the (J, pi) contributions for the grid energy at `e_idx`.
 fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) -> HfResult {
     let proj_spin_2j = (2.0 * calc.entrance.projectile.spin()) as i32;
-    let target_spin_2j = 0_i32; // Assume even-even target (ground state 0+)
+    let target_spin_2j = TARGET_TWO_SPIN;
     let n_exit = calc.config.exit_channels.len();
+
+    // Gamma rays are emitted by the compound nucleus (target + projectile).
+    let target = calc.entrance.target;
+    let projectile = calc.entrance.projectile;
+    let compound =
+        nucrust_core::Nuclide::new(target.z() + projectile.z(), target.a() + projectile.a())
+            .unwrap_or(target);
+
+    // The entrance channel (compound elastic) competes in the denominator unless
+    // an exit particle channel of the same type already accounts for it.
+    let entrance_in_exits = calc.config.exit_channels.contains(&projectile)
+        && calc
+            .exit_particle_channels
+            .iter()
+            .any(|e| e.channel.projectile == projectile);
 
     let mut sigma_cn = 0.0;
     let mut sigma_exit = vec![0.0; n_exit];
@@ -477,7 +575,7 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
 
             // Compute transmission for ALL exit channels
             let mut t_exit = vec![0.0; n_exit];
-            let mut t_total = t_a; // entrance channel contributes to total
+            let mut t_total = if entrance_in_exits { 0.0 } else { t_a };
 
             for (ch_idx, proj) in calc.config.exit_channels.iter().enumerate() {
                 if *proj == Projectile::Gamma {
@@ -485,7 +583,7 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
                     let t_g = gamma_transmission(
                         calc.gsf,
                         calc.nld,
-                        &calc.entrance.target,
+                        &compound,
                         excitation,
                         two_j,
                         parity,
@@ -506,7 +604,16 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
                         } else {
                             // Fallback: direct grid lookup (no NLD integration)
                             let exit_spin_2j = (2.0 * proj.spin()) as i32;
-                            particle_transmission(ecd.tc, e_idx, two_j, parity, exit_spin_2j)
+                            // to the residual ground state (assumed 0+ like the target).
+                            particle_transmission(
+                                ecd.tc,
+                                e_idx,
+                                two_j,
+                                parity,
+                                exit_spin_2j,
+                                TARGET_TWO_SPIN,
+                                TARGET_PARITY,
+                            )
                         };
                         t_exit[ch_idx] = t_b;
                         t_total += t_b;
@@ -740,6 +847,96 @@ mod tests {
 
         let t = entrance_transmission(&tc, 0, 1, Parity::Positive, 1);
         assert!(t > 0.0, "T(J=1/2) = {}", t);
+    }
+
+    #[test]
+    fn entrance_transmission_selects_single_lj_for_spin_zero_target() {
+        // n + 0+ target: (J, pi) is reached by exactly one (l, j = J), l fixed by parity.
+        let energies = EnergyGrid::from_values(vec![1.0]).unwrap();
+        let tc = TransmissionCoeffs {
+            energy: energies,
+            l_max: 2,
+            // l=0: j=1/2 -> 0.9; l=1: j=1/2 -> 0.3, j=3/2 -> 0.5; l=2: j=3/2 -> 0.1, j=5/2 -> 0.2
+            data: vec![0.0, 0.9, 0.3, 0.5, 0.1, 0.2],
+        };
+        let t = |two_j, parity| entrance_transmission(&tc, 0, two_j, parity, 1);
+        assert_eq!(t(1, Parity::Positive), 0.9); // s1/2
+        assert_eq!(t(1, Parity::Negative), 0.3); // p1/2
+        assert_eq!(t(3, Parity::Negative), 0.5); // p3/2
+        assert_eq!(t(3, Parity::Positive), 0.1); // d3/2
+        assert_eq!(t(5, Parity::Positive), 0.2); // d5/2
+        assert_eq!(t(5, Parity::Negative), 0.0); // f5/2 not tabulated
+        assert_eq!(t(2, Parity::Positive), 0.0); // integer J unreachable
+    }
+
+    #[test]
+    fn sigma_cn_equals_optical_reaction_cross_section() {
+        // Summing the HF entrance weights over (J, pi) must reproduce
+        // sigma_R = pi/k^2 * sum_{lj} (2j+1)/2 * T_{lj}  (n + 0+ target), in mb.
+        let entrance = Channel {
+            projectile: Projectile::Neutron,
+            target: Nuclide::new(26, 56).unwrap(),
+            q_value: 7.646,
+        };
+        let energies = EnergyGrid::from_values(vec![1.0]).unwrap();
+        let data = vec![0.0, 0.93, 0.21, 0.20, 0.35, 0.38, 0.004, 0.003];
+        let tc = TransmissionCoeffs {
+            energy: energies,
+            l_max: 3,
+            data: data.clone(),
+        };
+        let nld = ConstantTemperature {
+            temperature: 0.88,
+            e0: -1.16,
+            a: 6.21,
+        };
+        let gsf = StandardLorentzian {
+            e_gdr: 16.36,
+            gamma_gdr: 4.58,
+            sigma_gdr: 136.0,
+            m1_params: None,
+        };
+        let config = HfConfig {
+            two_j_max: 20,
+            exit_channels: vec![Projectile::Gamma],
+            ..HfConfig::default()
+        };
+        let calc = HfCalculation {
+            entrance: &entrance,
+            tc_entrance: &tc,
+            exit_particle_channels: vec![],
+            nld: &nld,
+            gsf: &gsf,
+            config: &config,
+            discrete_levels: None,
+        };
+        let r = hauser_feshbach(&calc).unwrap();
+
+        let mu = nucrust_core::units::reduced_mass(Projectile::Neutron.mass_amu(), 56.0);
+        let k = nucrust_core::units::wave_number(mu, 1.0);
+        // k for 1 MeV (CM) neutrons on Fe-56 is ~0.218 fm^-1 -> pi/k^2 ~ 663 mb.
+        assert!((k - 0.2177).abs() < 1e-3, "k = {k}");
+        let mut weighted = 0.0;
+        for l in 0..=3_usize {
+            for j_idx in 0..2_usize {
+                let two_j = 2 * l as i32 + 2 * j_idx as i32 - 1;
+                if two_j < 0 {
+                    continue;
+                }
+                weighted += (two_j as f64 + 1.0) / 2.0 * data[l * 2 + j_idx];
+            }
+        }
+        let sigma_r = PI / (k * k) * weighted * 10.0;
+        assert!(
+            (r[0].sigma_cn / sigma_r - 1.0).abs() < 1e-12,
+            "sigma_cn = {} mb, sigma_R = {} mb",
+            r[0].sigma_cn,
+            sigma_r
+        );
+        // ~2.3 b for these Fe-56-like T_lj at 1 MeV.
+        assert!(r[0].sigma_cn > 2000.0 && r[0].sigma_cn < 2600.0);
+        // Capture is a small fraction of compound formation (T_gamma << T_n).
+        assert!(r[0].sigma_channels[0] < 0.1 * r[0].sigma_cn);
     }
 
     #[test]
