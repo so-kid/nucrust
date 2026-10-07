@@ -117,7 +117,7 @@ nucrust/                    ← ワークスペースルート
    （nucrust-core / nucrust-optical / nucrust-hf の dev-dependencies）
 
 ### 未導入（計画のみ）
-- `criterion` 回帰ベンチマーク（dev-dependency は設定済みだがベンチターゲット未作成）
+- `criterion` 回帰ベンチマーク（`nucrust-special` の `benches/coulomb.rs` のみ作成済み。他クレートはベンチターゲット未作成）
 - `cargo-fuzz` ファズテスト
 - TALYS / AZURE2 との比較検証（task.md の未完了項目 ACC-02〜04）
 

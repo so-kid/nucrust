@@ -7,6 +7,42 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+#### Coulomb wave functions (`nucrust-special`)
+- G_l for l > 0 in the classically forbidden region had relative errors up to
+  0.76. The l = 0 normalization took G_0 from Numerov integration started at a
+  point whose sign came from the asymptotic phase. That sign is wrong near the
+  turning point, so G_0 had the wrong sign, the Wronskian-derived G'_0 was
+  inconsistent, and the upward recurrence carried the error to all l > 0.
+- The sign of F (and G) is now exact: it is tracked through the CF1 Lentz
+  iteration (Barnett COULFG) instead of being inferred from the asymptotic
+  phase, which gave the wrong sign for F and G near the turning point
+  (e.g. eta = 5, rho = 10).
+- The l = 0 normalization now picks the most accurate of Steed's method (CF1 +
+  CF2), the 1F1 power series for F with G = (1 - qF^2)/(F' - pF) from CF2, and
+  a rho shift (Steed at rho = 2 eta, high-order Taylor integration of G
+  inward). The O(h^4) Numerov fallback is removed. F, G, F' and G' now agree
+  with mpmath to < 1e-13 (F, G) and < 1e-12 (F', G') on all 106 reference
+  points, including deep in the forbidden region, at small rho, and for eta
+  up to 200.
+- `gamow_factor` evaluates C_0 in closed form plus an upward recurrence in l.
+  The log-gamma route lost ~4 digits at large eta.
+- The 1F1 series recurs on the terms A_k rho^k directly; A_k and rho^k no
+  longer overflow separately at large rho.
+- The SIMD batch path (`simd` feature) shares the scalar normalization. It
+  previously applied Steed at l_min with the asymptotic-phase sign and an
+  upward F recurrence, and returned unconverged continued fractions silently.
+
+### Added
+- mpmath reference data: forbidden-region (l > 0, near the turning point,
+  large eta), small-rho, and attractive (eta < 0) groups. Reference F'/G' are
+  now exact (from the l recurrence) instead of finite differences. They are
+  validated together with F, G and the Wronskian, and values are compared with
+  their signs.
+- Criterion benchmark target `cargo bench -p nucrust-special` (per-regime
+  `coulomb_wave` timings and a SIMD batch).
+
 ## [0.1.0] - 2026-10-07
 
 ### Added

@@ -30,3 +30,7 @@ optional = true
 [dependencies.rayon]
 workspace = true
 optional = true
+
+[[bench]]
+name = "coulomb"
+harness = false
