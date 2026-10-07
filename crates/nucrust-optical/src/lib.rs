@@ -17,6 +17,8 @@ pub mod transmission;
 
 pub use cc_transmission::compute_transmission_auto;
 pub use deformation::{CcChannel, CoupledChannelSystem, DeformedKoningDelaroche};
-pub use omp::{Avrigeanu2014, CustomOmp, KoningDelaroche, McFaddenSatchler};
+pub use omp::{
+    Avrigeanu2014, CustomOmp, KdParameters, KoningDelaroche, KoningDelarocheLocal, McFaddenSatchler,
+};
 pub use potential::{coulomb_potential, spin_orbit_factor, woods_saxon, woods_saxon_deriv};
 pub use transmission::compute_transmission_coeffs;

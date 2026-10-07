@@ -9,6 +9,12 @@
 //! - an *acceptance* test at the SRS target (relative error < 1e-6), `#[ignore]`d with the
 //!   measured state until the model differences listed below are resolved.
 //!
+//! ACC-02 compares two nucrust setups: the library defaults (global KD, non-relativistic,
+//! depths at E_cm, mass number A; regression only) and the opt-in ECIS/TALYS conventions
+//! (`TlSetup::EcisCompatible`: TALYS's local KD set, `Kinematics::Relativistic`,
+//! `OmpEnergy::Laboratory`, TALYS target mass; regression and acceptance), since only the
+//! latter can reach the SRS target.
+//!
 //! Run `cargo test -p nucrust --test golden_talys -- --include-ignored --nocapture` to see
 //! the comparison tables.
 //!
@@ -27,28 +33,32 @@
 //!
 //! # Known sources of the measured errors (see task.md T-2A.13 / T-2B.14)
 //!
-//! ACC-02 (ranked by impact, from an off-line study with a custom potential/solver):
-//! 1. Spin-orbit term of `KoningDelaroche`: sign reversed (j = l+1/2 is made repulsive) and
-//!    strength off by 1/a_so (Thomas form `2 lambda_pi^2 V_so (1/r) df/dr l.s` = `-(V_so/a_so)
-//!    l.s g(r)/r` with g the normalized derivative). Visible as swapped T(l-1/2)/T(l+1/2).
-//! 2. Matching radius `1.25 A^1/3 + 2.9 fm` (7.7 fm for Fe-56) truncates the Woods-Saxon
-//!    tail: high-l T are up to ~100% low. A ~20 fm radius converges.
-//! 3. TALYS runs ECIS with relativistic kinematics (`relativistic y`); this changes k^2 by
-//!    ~E/(2 m c^2) and high-l T by ~l times that (~10% at 20 MeV, l ~ 15).
-//! 4. TALYS uses `localomp y`: Fe-56 and U-238 take the *local* KD03-form parameter sets of
-//!    `structure/optical/neutron/n-{Fe,U}.omp` (Fe-56: Ef = -9.42, v1 = 56.8, rv = 1.186,
-//!    ...), nucrust the *global* KD set (U-238 is outside its A <= 209 range). TALYS does not
-//!    use coupled channels for neutrons here (`rotational` unset), so U-238 is spherical too.
-//! 5. The log-derivative `(R_N - 1)/h` used to match the Numerov solution is O(h): ~1.5% on
-//!    T_0 at h = 0.05 fm. Two-point matching removes it.
-//! 6. ECIS evaluates the KD depths at the LAB energy (nucrust: E_cm); nucrust's reduced mass
-//!    uses A instead of the atomic mass (~2e-5 on k^2).
+//! ACC-02, fixed in the library (were, by impact: 1.34 -> 0.14 max on Fe-56 defaults):
+//! - Spin-orbit term of `KoningDelaroche`: was `+V_so l.s g/r` (j = l+1/2 repulsive,
+//!   strength off by 1/a_so), now the Thomas form `-(V_so/a_so) l.s g(r)/r`.
+//! - Matching radius: was `1.25 A^1/3 + 2.9 fm` (7.7 fm for Fe-56, high-l T up to ~100%
+//!   low), now past the Woods-Saxon tail (`R + 33 a`, ~27 fm for Fe-56).
+//! - Numerov matching: the O(h) log-derivative `(R_N - 1)/h` (~1.5% on T_0) is now an
+//!   O(h^4) two-point match, with an O(r^2)-corrected start at r_min.
 //!
-//! With 1-5 fixed (local parameters, relativistic kinematics, 20 fm, two-point matching)
-//! the Fe-56 study reached max 6.7e-3 / median 3.4e-3, with a remaining ~-0.5% offset on
-//! T_0 already at 1 keV that is not explained yet (dump the TALYS potential with
-//! `outomp y` to compare depths). TALYS computes in single precision and prints 7
-//! significant digits, so ~1e-6 is also the resolution floor of this golden data.
+//! ACC-02, remaining differences of the defaults (opt-in options exist for 1-3):
+//! 1. TALYS uses `localomp y`: Fe-56 and U-238 take the *local* KD03-form parameter sets
+//!    of `structure/optical/neutron/n-{Fe,U}.omp` (Fe-56: Ef = -9.42, v1 = 56.8, rv =
+//!    1.186, ...), nucrust the *global* KD set (U-238 is outside its A <= 209 range):
+//!    2.3% on Fe-56 T_0 at 1 keV.
+//! 2. TALYS runs ECIS with relativistic kinematics (`relativistic y`); this changes k^2 by
+//!    ~E/(2 m c^2) and high-l T by ~l times that (~10% at 20 MeV, l ~ 15).
+//! 3. ECIS evaluates the KD depths at the LAB energy (nucrust: E_cm); nucrust's reduced
+//!    mass uses A instead of the atomic mass (~2e-5 on k^2).
+//!
+//! With all options (ECIS-compatible setup) Fe-56 reaches max 6.7e-3 / median 3.5e-3, with
+//! a remaining ~-0.5% offset on T_0 already at 1 keV that is not explained yet (dump the
+//! TALYS potential with `outomp y` to compare depths). U-238 stays at max 1.35 / median
+//! 0.34 with the transcribed local set (worse than the global defaults, max 1.13): TALYS
+//! evidently does not compute U-238 with that spherical potential (a coupled-channel or
+//! other actinide OMP is likely; check the TALYS deformation/OMP selection with
+//! `outomp y`). TALYS computes in single precision and prints 7 significant digits, so
+//! ~1e-6 is also the resolution floor of this golden data.
 //!
 //! ACC-03a: sigma_R inherits the T_lj errors (at keV energies nucrust/TALYS sigma_R ratio
 //! equals the T_0 ratio to ~2e-4, confirming the same CM `pi/k^2` convention).
@@ -69,7 +79,10 @@ use std::path::{Path, PathBuf};
 
 use nucrust::cpu_backend::cpu_transmission_coeffs;
 use nucrust_core::backend::NumerovConfig;
-use nucrust_core::{Channel, EnergyGrid, Nuclide, Parity, Projectile, TransmissionCoeffs};
+use nucrust_core::{
+    Channel, EnergyGrid, Kinematics, Nuclide, OmpEnergy, Parity, Projectile, TransmissionCoeffs,
+};
+use nucrust_optical::{compute_transmission_coeffs, KdParameters, KoningDelarocheLocal};
 
 // ---------------------------------------------------------------------------------------
 // Reference data access
@@ -160,6 +173,82 @@ fn numerov_config() -> NumerovConfig {
         max_l: 25,
         convergence_tl: 1e-12,
         ..NumerovConfig::default()
+    }
+}
+
+/// TALYS local KD03-form neutron parameters (`localomp y`), set 1 of
+/// `structure/optical/neutron/n-{Fe,U}.omp` in the TALYS repository; v4 = 7e-9 as in TALYS.
+fn talys_local_kd(nuclide: &str) -> KdParameters {
+    // [e_f], [rv av v1 v2 v3 w1 w2], [rd ad d1 d2 d3], [rso aso vso1 vso2 wso1 wso2]
+    let (e_f, vol, surf, so) = match nuclide {
+        "fe56" => (
+            -9.42,
+            [1.186, 0.663, 56.8, 0.0071, 0.000019, 13.0, 80.0],
+            [1.282, 0.532, 15.3, 0.0211, 10.90],
+            [1.000, 0.580, 6.1, 0.0040, -3.1, 160.0],
+        ),
+        "u238" => (
+            -5.48,
+            [1.244, 0.644, 49.7, 0.0068, 0.000014, 18.2, 80.0],
+            [1.250, 0.500, 10.8, 0.0160, 14.50],
+            [1.080, 0.570, 6.6, 0.0035, -3.1, 160.0],
+        ),
+        _ => panic!("no TALYS local OMP transcribed for {nuclide}"),
+    };
+    KdParameters {
+        e_f,
+        rv: vol[0],
+        av: vol[1],
+        v1: vol[2],
+        v2: vol[3],
+        v3: vol[4],
+        v4: 7.0e-9,
+        w1: vol[5],
+        w2: vol[6],
+        rd: surf[0],
+        ad: surf[1],
+        d1: surf[2],
+        d2: surf[3],
+        d3: surf[4],
+        rso: so[0],
+        aso: so[1],
+        vso1: so[2],
+        vso2: so[3],
+        wso1: so[4],
+        wso2: so[5],
+        rc: 0.0,
+    }
+}
+
+/// How nucrust computes T_lj for the ACC-02 comparison.
+#[derive(Clone, Copy, PartialEq)]
+enum TlSetup {
+    /// Library defaults: global KD, non-relativistic, depths at E_cm, mass number A.
+    Default,
+    /// Opt-in ECIS/TALYS conventions: TALYS local KD set, relativistic kinematics, depths
+    /// at E_lab, TALYS target mass.
+    EcisCompatible,
+}
+
+fn transmission(
+    setup: TlSetup,
+    nuclide: &str,
+    ch: &Channel,
+    grid: &EnergyGrid,
+    m_target: f64,
+) -> TransmissionCoeffs {
+    match setup {
+        TlSetup::Default => cpu_transmission_coeffs(ch, grid, &numerov_config()).unwrap(),
+        TlSetup::EcisCompatible => {
+            let config = NumerovConfig {
+                kinematics: Kinematics::Relativistic,
+                omp_energy: OmpEnergy::Laboratory,
+                target_mass_amu: Some(m_target),
+                ..numerov_config()
+            };
+            let omp = KoningDelarocheLocal::new(talys_local_kd(nuclide));
+            compute_transmission_coeffs(&omp, ch, grid, &config).unwrap()
+        }
     }
 }
 
@@ -271,8 +360,8 @@ fn assert_within(title: &str, s: &Summary, bound: f64) {
 // ACC-02: neutron transmission coefficients T_lj
 // ---------------------------------------------------------------------------------------
 
-/// Compare nucrust T_lj (KD global, Numerov) with TALYS T(L-1/2,L), T(L+1/2,L).
-fn acc02_points(nuclide: &str, z: u16, a: u16, m_target: f64) -> Vec<Point> {
+/// Compare nucrust T_lj (`setup`, Numerov) with TALYS T(L-1/2,L), T(L+1/2,L).
+fn acc02_points(setup: TlSetup, nuclide: &str, z: u16, a: u16, m_target: f64) -> Vec<Point> {
     let path = talys_dir(nuclide).join(format!("{nuclide}_transmission_jsplit.dat"));
     // Columns: E_lab, L, T(L-1/2,L), T(L+1/2,L), T_avg(L)
     let rows = read_table(&path, 5);
@@ -303,7 +392,7 @@ fn acc02_points(nuclide: &str, z: u16, a: u16, m_target: f64) -> Vec<Point> {
 
     let ch = neutron_channel(z, a, 0.0);
     let grid = EnergyGrid::from_values(e_cm.clone()).unwrap();
-    let tc = cpu_transmission_coeffs(&ch, &grid, &numerov_config()).unwrap();
+    let tc = transmission(setup, nuclide, &ch, &grid, m_target);
 
     let mut points = Vec::new();
     for r in &rows {
@@ -335,16 +424,22 @@ fn acc02_points(nuclide: &str, z: u16, a: u16, m_target: f64) -> Vec<Point> {
     points
 }
 
-/// Measured (1339 points): max 1.342 at E_cm = 4.5 MeV, l=4 j=9/2 (spin-orbit reversal);
-/// median 3.5e-1; T_0 max 3.6e-2. Bound = 1.4 x 1.1.
-const ACC02_FE56_RATCHET: f64 = 1.54;
-/// Measured (1616 points): max 5.660 at E_cm = 0.9 MeV, l=7 j=15/2; median 4.2e-1.
-/// Bound = 5.7 x 1.1.
-const ACC02_U238_RATCHET: f64 = 6.27;
+/// Defaults, measured (1339 points): max 1.374e-1 at E_cm = 1 keV, l=2 j=5/2; median
+/// 2.1e-2; T_0 max 2.5e-2 (global vs local KD). Bound = 0.14 x 1.1.
+const ACC02_FE56_RATCHET: f64 = 0.154;
+/// Defaults, measured (1616 points): max 1.128 at E_cm = 2.8 MeV, l=7 j=13/2; median
+/// 2.6e-1. Bound = 1.2 x 1.1.
+const ACC02_U238_RATCHET: f64 = 1.32;
+/// ECIS-compatible, measured (1339 points): max 6.704e-3 at E_cm = 1 keV, l=2 j=3/2;
+/// median 3.5e-3. Bound = 6.8e-3 x 1.1.
+const ACC02_FE56_ECIS_RATCHET: f64 = 7.48e-3;
+/// ECIS-compatible, measured (1616 points): max 1.353 at E_cm = 1.7 MeV, l=7 j=13/2;
+/// median 3.4e-1. Bound = 1.4 x 1.1.
+const ACC02_U238_ECIS_RATCHET: f64 = 1.54;
 
 #[test]
 fn acc02_fe56_tlj_regression() {
-    let pts = acc02_points("fe56", 26, 56, TALYS_M_FE56);
+    let pts = acc02_points(TlSetup::Default, "fe56", 26, 56, TALYS_M_FE56);
     let s = summarize(
         "ACC-02 Fe-56 n T_lj vs TALYS (worst per energy)",
         &pts,
@@ -354,17 +449,8 @@ fn acc02_fe56_tlj_regression() {
 }
 
 #[test]
-#[ignore = "ACC-02 not yet met: measured max rel err 1.3e0 at E_cm=4.5 MeV l=4 j=9/2 (median 3.5e-1); \
-            see module docs: KD spin-orbit sign/strength, matching radius, relativistic kinematics, local OMP"]
-fn acc02_fe56_tlj_srs_target() {
-    let pts = acc02_points("fe56", 26, 56, TALYS_M_FE56);
-    let s = summarize("ACC-02 Fe-56 n T_lj vs TALYS (all points)", &pts, true);
-    assert_within("ACC-02 Fe-56 SRS target", &s, 1e-6);
-}
-
-#[test]
 fn acc02_u238_tlj_regression() {
-    let pts = acc02_points("u238", 92, 238, TALYS_M_U238);
+    let pts = acc02_points(TlSetup::Default, "u238", 92, 238, TALYS_M_U238);
     let s = summarize(
         "ACC-02 U-238 n T_lj vs TALYS (worst per energy)",
         &pts,
@@ -374,11 +460,58 @@ fn acc02_u238_tlj_regression() {
 }
 
 #[test]
-#[ignore = "ACC-02 not yet met: measured max rel err 5.7e0 at E_cm=0.9 MeV l=7 j=15/2 (median 4.2e-1); \
-            see module docs: as Fe-56, plus TALYS local U-238 OMP vs global KD outside A<=209"]
+fn acc02_fe56_tlj_ecis_compatible_regression() {
+    let pts = acc02_points(TlSetup::EcisCompatible, "fe56", 26, 56, TALYS_M_FE56);
+    let s = summarize(
+        "ACC-02 Fe-56 n T_lj, ECIS-compatible, vs TALYS (worst per energy)",
+        &pts,
+        false,
+    );
+    assert_within(
+        "ACC-02 Fe-56 ECIS-compatible regression",
+        &s,
+        ACC02_FE56_ECIS_RATCHET,
+    );
+}
+
+#[test]
+#[ignore = "ACC-02 not yet met: ECIS-compatible setup measured max rel err 6.7e-3 at E_cm=1 keV l=2 j=3/2 \
+            (median 3.5e-3); unexplained ~-0.5% offset on T_0, see module docs"]
+fn acc02_fe56_tlj_srs_target() {
+    let pts = acc02_points(TlSetup::EcisCompatible, "fe56", 26, 56, TALYS_M_FE56);
+    let s = summarize(
+        "ACC-02 Fe-56 n T_lj, ECIS-compatible, vs TALYS (all points)",
+        &pts,
+        true,
+    );
+    assert_within("ACC-02 Fe-56 SRS target", &s, 1e-6);
+}
+
+#[test]
+fn acc02_u238_tlj_ecis_compatible_regression() {
+    let pts = acc02_points(TlSetup::EcisCompatible, "u238", 92, 238, TALYS_M_U238);
+    let s = summarize(
+        "ACC-02 U-238 n T_lj, ECIS-compatible, vs TALYS (worst per energy)",
+        &pts,
+        false,
+    );
+    assert_within(
+        "ACC-02 U-238 ECIS-compatible regression",
+        &s,
+        ACC02_U238_ECIS_RATCHET,
+    );
+}
+
+#[test]
+#[ignore = "ACC-02 not yet met: ECIS-compatible setup measured max rel err 1.4e0 at E_cm=1.7 MeV l=7 j=13/2 \
+            (median 3.4e-1); TALYS apparently does not use the spherical local KD set for U-238, see module docs"]
 fn acc02_u238_tlj_srs_target() {
-    let pts = acc02_points("u238", 92, 238, TALYS_M_U238);
-    let s = summarize("ACC-02 U-238 n T_lj vs TALYS (all points)", &pts, true);
+    let pts = acc02_points(TlSetup::EcisCompatible, "u238", 92, 238, TALYS_M_U238);
+    let s = summarize(
+        "ACC-02 U-238 n T_lj, ECIS-compatible, vs TALYS (all points)",
+        &pts,
+        true,
+    );
     assert_within("ACC-02 U-238 SRS target", &s, 1e-6);
 }
 
@@ -525,15 +658,16 @@ fn acc03b_points() -> Vec<Point> {
         .collect()
 }
 
-/// Measured (117 points): max 4.214e-2 at E_cm = 7.98 MeV; median 3.0e-2 (3.6% at 1 keV,
-/// following T_0). Bound = 4.3e-2 x 1.1.
-const ACC03A_RATCHET: f64 = 4.73e-2;
-/// Measured (117 points): max 4.949e2 at E_cm = 9.82 keV (compound elastic lost below
-/// 10 keV, see module docs); median 7.0e-1. Bound = 5.0e2 x 1.1.
+/// Measured (117 points): max 2.533e-2 at E_cm = 0.88 MeV; median 1.7e-2 (global vs local
+/// KD, as T_0). Bound = 2.6e-2 x 1.1.
+const ACC03A_RATCHET: f64 = 2.86e-2;
+/// Measured (117 points): max 5.012e2 at E_cm = 9.82 keV (compound elastic lost below
+/// 10 keV, see module docs); median 7.0e-1. 5.1e2 x 1.1 would loosen the earlier bound
+/// (measured 4.949e2 before the T_lj fixes), so it stays at 5.0e2 x 1.1.
 const ACC03B_RATCHET: f64 = 550.0;
-/// Measured for E_cm >= 10 keV (90 points): max 1.085e1 at E_cm = 19.6 MeV (missing
-/// (n,p)/(n,2n)/pre-equilibrium competition); 0.6-0.7 (nucrust low) from 10 keV to 2 MeV.
-/// Bound = 11 x 1.1.
+/// Measured for E_cm >= 10 keV (90 points): max 1.077e1 at E_cm = 19.6 MeV (missing
+/// (n,p)/(n,2n)/pre-equilibrium competition); median 6.5e-1 (nucrust low from 10 keV to
+/// 2 MeV). Bound = 11 x 1.1.
 const ACC03B_ABOVE_10KEV_RATCHET: f64 = 12.1;
 
 #[test]
@@ -547,8 +681,8 @@ fn acc03a_fe56_reaction_xs_regression() {
 }
 
 #[test]
-#[ignore = "ACC-03a not yet met: measured max rel err 4.2e-2 at E_cm=7.98 MeV (median 3.0e-2); \
-            inherits the ACC-02 T_lj errors, see module docs"]
+#[ignore = "ACC-03a not yet met: measured max rel err 2.5e-2 at E_cm=0.88 MeV (median 1.7e-2); \
+            inherits the ACC-02 T_lj errors of the default (global KD) setup, see module docs"]
 fn acc03a_fe56_reaction_xs_srs_target() {
     let s = summarize(
         "ACC-03a Fe-56 sigma_R vs TALYS sigma_reac",
@@ -573,7 +707,7 @@ fn acc03b_fe56_capture_xs_regression() {
 }
 
 #[test]
-#[ignore = "ACC-03b not yet met: measured max rel err 4.9e2 at E_cm=9.8 keV (median 7.0e-1; 1.1e1 at 19.6 MeV); \
+#[ignore = "ACC-03b not yet met: measured max rel err 5.0e2 at E_cm=9.8 keV (median 7.0e-1; 1.1e1 at 19.6 MeV); \
             missing compound elastic below 10 keV, NLD/GSF/WFC/competing-channel model differences, see module docs"]
 fn acc03b_fe56_capture_xs_srs_target() {
     let s = summarize(

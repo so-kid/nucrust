@@ -30,6 +30,33 @@ pub fn woods_saxon_deriv(r: f64, r0: f64, a: f64, channel: &Channel) -> f64 {
     4.0 * ex / ((1.0 + ex) * (1.0 + ex))
 }
 
+/// Thomas spin-orbit radial form factor in the `(hbar / m_pi c)^2 = 2 fm^2` convention:
+///
+/// `2 (hbar/m_pi c)^2 (1/r) df/dr = -g(r) / (a r)`, with `g` = [`woods_saxon_deriv`].
+///
+/// Multiplied by a positive depth `V_so` and `<l.s>` ([`spin_orbit_factor`]) this is the
+/// standard spin-orbit potential `V_so (hbar/m_pi c)^2 (1/r) df/dr l.sigma` of
+/// Koning-Delaroche, Becchetti-Greenlees and ECIS: attractive for j = l + 1/2.
+#[inline]
+pub fn thomas_spin_orbit(r: f64, r0: f64, a: f64, channel: &Channel) -> f64 {
+    -woods_saxon_deriv(r, r0, a, channel) / (a * r.max(0.01))
+}
+
+/// Number of diffuseness lengths past `R = r0 A^{1/3}` after which a Woods-Saxon term has
+/// decayed to `exp(-33) ~ 5e-15` of its depth.
+///
+/// A shorter cut leaves an absorptive tail that shifts T_lj by roughly the cut level in
+/// absolute terms; at `exp(-33)` the shift is below the ~1e-15 rounding floor of
+/// `1 - |S|^2`, so T_lj down to ~1e-9 are converged to 1e-6 relative.
+pub const WS_TAIL_LENGTHS: f64 = 33.0;
+
+/// Radius `r0 A^{1/3} + WS_TAIL_LENGTHS * a` beyond which a Woods-Saxon term (and its
+/// derivative) is negligible; use the maximum over all terms as the matching radius.
+#[inline]
+pub fn woods_saxon_tail_radius(r0: f64, a: f64, channel: &Channel) -> f64 {
+    r0 * (channel.target.a() as f64).cbrt() + WS_TAIL_LENGTHS * a
+}
+
 /// Spin-orbit coupling factor: <l·s> = [j(j+1) - l(l+1) - s(s+1)] / 2
 /// For nucleons, s = 1/2.
 #[inline]
@@ -133,6 +160,34 @@ mod tests {
         // j = l - 1/2: <l·s> = -(l+1)/2
         assert!((spin_orbit_factor(2, 1.5) - (-1.5)).abs() < 1e-14);
         assert!((spin_orbit_factor(1, 0.5) - (-1.0)).abs() < 1e-14);
+    }
+
+    #[test]
+    fn thomas_spin_orbit_matches_numerical_derivative() {
+        // -g/(a r) must equal 2 * (2 fm^2) * (1/r) df/dr.
+        let ch = fe56_neutron_channel();
+        let (r0, a) = (1.1, 0.59);
+        for r in [2.0, 4.0, 4.5, 6.0] {
+            let eps = 1e-5;
+            let dfdr =
+                (woods_saxon(r + eps, r0, a, &ch) - woods_saxon(r - eps, r0, a, &ch)) / (2.0 * eps);
+            let expected = 2.0 * 2.0 * dfdr / r;
+            let got = thomas_spin_orbit(r, r0, a, &ch);
+            assert!(got < 0.0);
+            assert!(
+                (got - expected).abs() < 1e-8 * expected.abs(),
+                "r={r}: {got} vs {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn tail_radius_makes_ws_negligible() {
+        let ch = fe56_neutron_channel();
+        let (r0, a) = (1.2, 0.67);
+        let r = woods_saxon_tail_radius(r0, a, &ch);
+        assert!(woods_saxon(r, r0, a, &ch) < 5e-15);
+        assert!(woods_saxon_deriv(r, r0, a, &ch) < 2e-14);
     }
 
     #[test]

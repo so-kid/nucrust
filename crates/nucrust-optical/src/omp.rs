@@ -20,203 +20,253 @@ use crate::potential::*;
 ///
 /// Nucl. Phys. A 713 (2003) 231-310.
 /// Valid for n and p on targets 24 ≤ A ≤ 209, E < 200 MeV.
+///
+/// Uses the global parameterization ([`KdParameters::global`]); see
+/// [`KoningDelarocheLocal`] for a nucleus-specific (local) parameter set.
 #[derive(Debug, Clone)]
 pub struct KoningDelaroche;
 
-/// Energy-dependent potential depths and geometry for KD.
-struct KdPotential {
+/// Parameters of the Koning-Delaroche (KD03) functional form.
+///
+/// With `dE = E - e_f` (E: the energy passed to [`OpticalPotential::potential`]):
+///
+/// - `V_v  = v1 (1 - v2 dE + v3 dE^2 - v4 dE^3)`
+///   `+ Vc_bar v1 (v2 - 2 v3 dE + 3 v4 dE^2)` (protons, `Vc_bar = 1.73 Z / (rc A^1/3)`)
+/// - `W_v  = w1 dE^2 / (dE^2 + w2^2)`
+/// - `W_d  = d1 dE^2 exp(-d2 dE) / (dE^2 + d3^2)`
+/// - `V_so = vso1 exp(-vso2 dE)`, `W_so = wso1 dE^2 / (dE^2 + wso2^2)`
+///
+/// with Woods-Saxon geometry `(rv, av)` for both volume terms, `(rd, ad)` for the surface
+/// and `(rso, aso)` for the Thomas spin-orbit term (KD Eq. 2). The local sets of the TALYS
+/// structure database (`optical/neutron/n-*.omp`) use the same form: line 1 gives `e_f`
+/// (and `rc`), line 2 `rv av v1 v2 v3 w1 w2`, line 3 `rd ad d1 d2 d3`, line 4
+/// `rso aso vso1 vso2 wso1 wso2`; `v4` is 7e-9 there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KdParameters {
+    /// Fermi energy E_f (MeV).
+    pub e_f: f64,
+    /// Real volume depth parameters.
+    pub v1: f64,
+    /// Real volume depth parameters.
+    pub v2: f64,
+    /// Real volume depth parameters.
+    pub v3: f64,
+    /// Real volume depth parameters.
+    pub v4: f64,
+    /// Imaginary volume depth parameters.
+    pub w1: f64,
+    /// Imaginary volume depth parameters.
+    pub w2: f64,
+    /// Imaginary surface depth parameters.
+    pub d1: f64,
+    /// Imaginary surface depth parameters.
+    pub d2: f64,
+    /// Imaginary surface depth parameters.
+    pub d3: f64,
+    /// Real spin-orbit depth parameters.
+    pub vso1: f64,
+    /// Real spin-orbit depth parameters.
+    pub vso2: f64,
+    /// Imaginary spin-orbit depth parameters.
+    pub wso1: f64,
+    /// Imaginary spin-orbit depth parameters.
+    pub wso2: f64,
+    /// Volume radius parameter (fm).
+    pub rv: f64,
+    /// Volume diffuseness (fm).
+    pub av: f64,
+    /// Surface radius parameter (fm).
+    pub rd: f64,
+    /// Surface diffuseness (fm).
+    pub ad: f64,
+    /// Spin-orbit radius parameter (fm).
+    pub rso: f64,
+    /// Spin-orbit diffuseness (fm).
+    pub aso: f64,
+    /// Coulomb radius parameter (fm); only used for charged projectiles.
+    pub rc: f64,
+}
+
+impl KdParameters {
+    /// Global KD parameters for a nucleon channel.
+    ///
+    /// Koning & Delaroche, Nucl. Phys. A 713 (2003) 231-310, Tables 14-15. Cross-checked
+    /// against the MARLEY C++ implementation and the IAEA RIPL-2 Fortran code (om-kd02.for).
+    pub fn global(channel: &Channel) -> Self {
+        let a = channel.target.a() as f64;
+        let z = channel.target.z() as f64;
+        let n = a - z;
+        let a13 = a.cbrt();
+        let is_proton = channel.projectile == Projectile::Proton;
+        // Asymmetry parameter
+        let asym = (n - z) / a;
+
+        if is_proton {
+            Self {
+                e_f: -8.4075 + 0.01378 * a,
+                v1: 59.30 + 21.0 * asym - 0.024 * a,
+                v2: 0.007067 + 4.23e-6 * a,
+                v3: 1.729e-5 + 1.136e-8 * a,
+                v4: 7.0e-9,
+                w1: 14.667 + 0.009629 * a,
+                w2: 73.55 + 0.0795 * a,
+                d1: 16.0 + 16.0 * asym,
+                d2: 0.0180 + 0.003802 / (1.0 + ((a - 156.0) / 8.0).exp()),
+                d3: 11.5,
+                vso1: 5.922 + 0.0030 * a,
+                vso2: 0.0040,
+                wso1: -3.1,
+                wso2: 160.0,
+                rv: 1.3039 - 0.4054 / a13,
+                av: 0.6778 - 1.487e-4 * a,
+                rd: 1.3424 - 0.01585 * a13,
+                ad: 0.5187 + 5.205e-4 * a,
+                rso: 1.1854 - 0.647 / a13,
+                aso: 0.59,
+                rc: 1.198 + 0.697 * a.powf(-2.0 / 3.0) + 12.994 * a.powf(-5.0 / 3.0),
+            }
+        } else {
+            Self {
+                e_f: -11.2814 + 0.02646 * a,
+                v1: 59.30 - 21.0 * asym - 0.024 * a,
+                v2: 0.007228 - 1.48e-6 * a,
+                v3: 1.994e-5 - 2.0e-8 * a,
+                v4: 7.0e-9,
+                w1: 12.195 + 0.0167 * a,
+                w2: 73.55 + 0.0795 * a,
+                d1: 16.0 - 16.0 * asym,
+                d2: 0.0180 + 0.003802 / (1.0 + ((a - 156.0) / 8.0).exp()),
+                d3: 11.5,
+                vso1: 5.922 + 0.0030 * a,
+                vso2: 0.0040,
+                wso1: -3.1,
+                wso2: 160.0,
+                rv: 1.3039 - 0.4054 / a13,
+                av: 0.6778 - 1.487e-4 * a,
+                rd: 1.3424 - 0.01585 * a13,
+                ad: 0.5446 - 1.656e-4 * a,
+                rso: 1.1854 - 0.647 / a13,
+                aso: 0.59,
+                rc: 0.0,
+            }
+        }
+    }
+
+    /// Energy-dependent depths at energy `e` (MeV).
+    fn depths(&self, e: f64, channel: &Channel) -> KdDepths {
+        let de = e - self.e_f;
+        let de2 = de * de;
+        let de3 = de2 * de;
+
+        let mut v_real = self.v1 * (1.0 - self.v2 * de + self.v3 * de2 - self.v4 * de3);
+        // Coulomb correction for charged projectiles: V(E - Vc_bar) to first order,
+        // Vc_bar * v1 (v2 - 2 v3 dE + 3 v4 dE^2), with Vc_bar = 1.73 Z / R_c (MeV).
+        if channel.projectile.z() > 0 && self.rc > 0.0 {
+            let r_c = self.rc * (channel.target.a() as f64).cbrt();
+            let vcbar = 1.73 * channel.target.z() as f64 / r_c;
+            v_real += vcbar * self.v1 * (self.v2 - 2.0 * self.v3 * de + 3.0 * self.v4 * de2);
+        }
+
+        KdDepths {
+            v_real,
+            w_vol: (self.w1 * de2 / (de2 + self.w2 * self.w2)).max(0.0),
+            w_surf: (self.d1 * de2 * (-self.d2 * de).exp() / (de2 + self.d3 * self.d3)).max(0.0),
+            v_so: self.vso1 * (-self.vso2 * de).exp(),
+            w_so: self.wso1 * de2 / (de2 + self.wso2 * self.wso2),
+        }
+    }
+
+    /// Complex potential in this crate's convention (absorption = positive `Im`).
+    fn potential(&self, r: f64, e: f64, l: u32, j: f64, channel: &Channel) -> Complex64 {
+        let d = self.depths(e, channel);
+        let ls = spin_orbit_factor(l, j);
+
+        // Real and imaginary volume use the same WS shape factor (rv, av)
+        let f_v = woods_saxon(r, self.rv, self.av, channel);
+        // Surface uses its own geometry (rd, ad)
+        let df_s = woods_saxon_deriv(r, self.rd, self.ad, channel);
+        // Spin-orbit: Thomas form (KD Eq. 2), U_so = (V_so + i W_so) * 2 lambda_pi^2
+        // (1/r) df/dr <l.s>, attractive for j = l + 1/2.
+        let f_so = thomas_spin_orbit(r, self.rso, self.aso, channel);
+        let v_c = coulomb_potential(r, self.rc, channel);
+
+        let real = -d.v_real * f_v + d.v_so * ls * f_so + v_c;
+        // Absorption: positive Im(V) causes outgoing flux to decrease in the
+        // Fox-Goodwin Numerov integration used by this crate, so every imaginary
+        // term enters with the opposite sign of the physical U = ... - i W f.
+        let imag = d.w_vol * f_v + d.w_surf * df_s - d.w_so * ls * f_so;
+
+        Complex64::new(real, imag)
+    }
+
+    /// Radius beyond which every term is negligible.
+    fn matching_radius(&self, channel: &Channel) -> f64 {
+        woods_saxon_tail_radius(self.rv, self.av, channel)
+            .max(woods_saxon_tail_radius(self.rd, self.ad, channel))
+            .max(woods_saxon_tail_radius(self.rso, self.aso, channel))
+    }
+}
+
+/// Energy-dependent KD depths (MeV).
+struct KdDepths {
     v_real: f64,
     w_vol: f64,
     w_surf: f64,
     v_so: f64,
     w_so: f64,
-    /// Real volume and imaginary volume share the same geometry in KD.
-    rv: f64,
-    av: f64,
-    /// Surface (derivative) term geometry.
-    rd: f64,
-    ad: f64,
-    /// Spin-orbit geometry.
-    rso: f64,
-    aso: f64,
-    /// Coulomb radius parameter.
-    rc: f64,
-}
-
-impl KoningDelaroche {
-    /// Compute all KD potential depths and geometry for a given channel and energy.
-    ///
-    /// Parameters from Koning & Delaroche, Nucl. Phys. A 713 (2003) 231-310,
-    /// Tables 14-15 (global parameterization). Cross-checked against the MARLEY
-    /// C++ implementation and the IAEA RIPL-2 Fortran code (om-kd02.for).
-    fn compute_potential(&self, e_cm: f64, channel: &Channel) -> KdPotential {
-        let a = channel.target.a() as f64;
-        let z = channel.target.z() as f64;
-        let n = (channel.target.a() - channel.target.z()) as f64;
-        let a13 = a.cbrt();
-        let is_proton = channel.projectile == Projectile::Proton;
-
-        // Asymmetry parameter
-        let asym = (n - z) / a;
-
-        // Fermi energy
-        let e_f = if is_proton {
-            -8.4075 + 0.01378 * a
-        } else {
-            -11.2814 + 0.02646 * a
-        };
-
-        // Energy relative to Fermi energy
-        let de = e_cm - e_f;
-        let de2 = de * de;
-        let de3 = de2 * de;
-
-        // =================================================================
-        // Real volume depth: V = v1 * (1 - v2*de + v3*de² - v4*de³)
-        //   + Vcbar * (v2 - 2*v3*de + 3*v4*de²)  [proton only]
-        // =================================================================
-        let (v1, v2, v3, v4);
-        if is_proton {
-            v1 = 59.30 + 21.0 * asym - 0.024 * a; // +asym for protons
-            v2 = 0.007067 + 4.23e-6 * a;
-            v3 = 1.729e-5 + 1.136e-8 * a;
-            v4 = 7.0e-9; // same for n/p
-        } else {
-            v1 = 59.30 - 21.0 * asym - 0.024 * a; // -asym for neutrons
-            v2 = 0.007228 - 1.48e-6 * a;
-            v3 = 1.994e-5 - 2.0e-8 * a;
-            v4 = 7.0e-9;
-        }
-
-        let mut v_real = v1 * (1.0 - v2 * de + v3 * de2 - v4 * de3);
-
-        // Coulomb correction for protons (Lane isovector term)
-        // Vcbar = 1.73 * Z / Rc (MeV), where the 1.73 factor absorbs e²
-        if is_proton {
-            let rc_param = 1.198 + 0.697 * a.powf(-2.0 / 3.0) + 12.994 * a.powf(-5.0 / 3.0);
-            let r_c = rc_param * a13;
-            let vcbar = 1.73 * z / r_c;
-            v_real += vcbar * (v2 - 2.0 * v3 * de + 3.0 * v4 * de2);
-        }
-
-        // =================================================================
-        // Imaginary volume depth: W_v = w1 * de² / (de² + w2²)
-        // =================================================================
-        let (w1, w2);
-        if is_proton {
-            w1 = 14.667 + 0.009629 * a;
-            w2 = 73.55 + 0.0795 * a; // same as neutron w2
-        } else {
-            w1 = 12.195 + 0.0167 * a;
-            w2 = 73.55 + 0.0795 * a;
-        }
-        let w_vol = (w1 * de2 / (de2 + w2 * w2)).max(0.0);
-
-        // =================================================================
-        // Imaginary surface depth: W_d = d1 * de² * exp(-d2*de) / (de² + d3²)
-        // =================================================================
-        let (d1, d2, d3);
-        if is_proton {
-            d1 = 16.0 + 16.0 * asym; // +asym for protons
-        } else {
-            d1 = 16.0 - 16.0 * asym; // -asym for neutrons
-        }
-        // d2 is the same for n/p
-        d2 = 0.0180 + 0.003802 / (1.0 + ((a - 156.0) / 8.0).exp());
-        d3 = 11.5; // same for n/p
-
-        let w_surf = (d1 * de2 * (-d2 * de).exp() / (de2 + d3 * d3)).max(0.0);
-
-        // =================================================================
-        // Real spin-orbit: V_so = vso1 * exp(-vso2 * de)
-        // =================================================================
-        let vso1 = 5.922 + 0.0030 * a; // same for n/p
-        let vso2 = 0.0040; // same for n/p
-        let v_so = vso1 * (-vso2 * de).exp();
-
-        // =================================================================
-        // Imaginary spin-orbit: W_so = wso1 * de² / (de² + wso2²)
-        // =================================================================
-        let wso1 = -3.1; // same for n/p
-        let wso2 = 160.0; // same for n/p
-        let w_so = wso1 * de2 / (de2 + wso2 * wso2);
-
-        // =================================================================
-        // Geometry parameters
-        // Real volume and imaginary volume share the same geometry.
-        // =================================================================
-        let rv = 1.3039 - 0.4054 / a13;
-        let av = 0.6778 - 1.487e-4 * a;
-
-        // Surface geometry: same radius as volume, different diffuseness for p
-        let rd = 1.3424 - 0.01585 * a13;
-        let ad = if is_proton {
-            0.5187 + 5.205e-4 * a
-        } else {
-            0.5446 - 1.656e-4 * a
-        };
-
-        let rso = 1.1854 - 0.647 / a13;
-        let aso = 0.59;
-
-        let rc = if is_proton {
-            1.198 + 0.697 * a.powf(-2.0 / 3.0) + 12.994 * a.powf(-5.0 / 3.0)
-        } else {
-            0.0
-        };
-
-        KdPotential {
-            v_real,
-            w_vol,
-            w_surf,
-            v_so,
-            w_so,
-            rv,
-            av,
-            rd,
-            ad,
-            rso,
-            aso,
-            rc,
-        }
-    }
 }
 
 impl OpticalPotential for KoningDelaroche {
     fn potential(&self, r: f64, e_cm: f64, l: u32, j: f64, channel: &Channel) -> Complex64 {
-        let p = self.compute_potential(e_cm, channel);
-        let ls = spin_orbit_factor(l, j);
-        let r_safe = r.max(0.01);
-
-        // Real and imaginary volume use the same WS shape factor (rv, av)
-        let f_v = woods_saxon(r, p.rv, p.av, channel);
-        // Surface uses its own geometry (rd, ad)
-        let df_s = woods_saxon_deriv(r, p.rd, p.ad, channel);
-        // Spin-orbit uses its own geometry (rso, aso)
-        let f_so = woods_saxon_deriv(r, p.rso, p.aso, channel);
-        let v_c = coulomb_potential(r, p.rc, channel);
-
-        let real = -p.v_real * f_v + p.v_so * ls * f_so / r_safe + v_c;
-        // Absorption: positive Im(V) causes outgoing flux to decrease in the
-        // Fox-Goodwin Numerov integration used by this crate.
-        let imag = p.w_vol * f_v + p.w_surf * df_s - p.w_so * ls * f_so / r_safe;
-
-        Complex64::new(real, imag)
+        KdParameters::global(channel).potential(r, e_cm, l, j, channel)
     }
 
     fn coulomb_radius(&self, channel: &Channel) -> f64 {
-        let p = self.compute_potential(10.0, channel);
-        p.rc * (channel.target.a() as f64).cbrt()
+        KdParameters::global(channel).rc * (channel.target.a() as f64).cbrt()
     }
 
     fn matching_radius(&self, channel: &Channel) -> f64 {
-        let a13 = (channel.target.a() as f64).cbrt();
-        // R_match = 1.25 * A^{1/3} + 4.5 * a (diffuseness)
-        1.25 * a13 + 4.5 * 0.65
+        KdParameters::global(channel).matching_radius(channel)
     }
 
     fn name(&self) -> &str {
         "Koning-Delaroche (2003)"
+    }
+}
+
+/// Koning-Delaroche potential with an explicit (e.g. nucleus-specific) parameter set.
+///
+/// TALYS uses such local KD03-form sets by default (`localomp y`) where its structure
+/// database has one, e.g. for n + Fe-56 `e_f = -9.42`, `v1 = 56.8`, `rv = 1.186`, ... The
+/// parameters are used as given, for whatever channel the potential is evaluated on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KoningDelarocheLocal {
+    /// The parameter set.
+    pub params: KdParameters,
+}
+
+impl KoningDelarocheLocal {
+    /// Wraps a parameter set.
+    pub fn new(params: KdParameters) -> Self {
+        Self { params }
+    }
+}
+
+impl OpticalPotential for KoningDelarocheLocal {
+    fn potential(&self, r: f64, e: f64, l: u32, j: f64, channel: &Channel) -> Complex64 {
+        self.params.potential(r, e, l, j, channel)
+    }
+
+    fn coulomb_radius(&self, channel: &Channel) -> f64 {
+        self.params.rc * (channel.target.a() as f64).cbrt()
+    }
+
+    fn matching_radius(&self, channel: &Channel) -> f64 {
+        self.params.matching_radius(channel)
+    }
+
+    fn name(&self) -> &str {
+        "Koning-Delaroche (local parameters)"
     }
 }
 
@@ -251,8 +301,7 @@ impl OpticalPotential for McFaddenSatchler {
     }
 
     fn matching_radius(&self, channel: &Channel) -> f64 {
-        let a13 = (channel.target.a() as f64).cbrt();
-        1.40 * a13 + 4.5 * 0.52
+        woods_saxon_tail_radius(1.40, 0.52, channel)
     }
 
     fn name(&self) -> &str {
@@ -309,7 +358,9 @@ impl OpticalPotential for Avrigeanu2014 {
 
     fn matching_radius(&self, channel: &Channel) -> f64 {
         let a13 = (channel.target.a() as f64).cbrt();
-        1.57 * a13 + 4.5 * 0.69
+        woods_saxon_tail_radius(1.245, 0.817 - 0.0085 * a13, channel)
+            .max(woods_saxon_tail_radius(1.570, 0.692 - 0.020 * a13, channel))
+            .max(woods_saxon_tail_radius(1.334, 0.531, channel))
     }
 
     fn name(&self) -> &str {
@@ -400,16 +451,16 @@ impl Default for CustomOmp {
 impl OpticalPotential for CustomOmp {
     fn potential(&self, r: f64, _e_cm: f64, l: u32, j: f64, channel: &Channel) -> Complex64 {
         let ls = spin_orbit_factor(l, j);
-        let r_safe = r.max(0.01);
 
         let f_v = woods_saxon(r, self.rv, self.av, channel);
         let f_w = woods_saxon(r, self.rw, self.aw, channel);
         let df_s = woods_saxon_deriv(r, self.rd, self.ad, channel);
-        let f_so = woods_saxon_deriv(r, self.rso, self.aso, channel);
+        let f_so = thomas_spin_orbit(r, self.rso, self.aso, channel);
         let v_c = coulomb_potential(r, self.rc, channel);
 
-        let real = -self.v_real * f_v + self.v_so * ls * f_so / r_safe + v_c;
-        let imag = -self.w_vol * f_w - self.w_surf * df_s + self.w_so * ls * f_so / r_safe;
+        let real = -self.v_real * f_v + self.v_so * ls * f_so + v_c;
+        // Same convention as `KoningDelaroche`: positive Im(V) is absorptive here.
+        let imag = self.w_vol * f_w + self.w_surf * df_s - self.w_so * ls * f_so;
 
         Complex64::new(real, imag)
     }
@@ -419,8 +470,10 @@ impl OpticalPotential for CustomOmp {
     }
 
     fn matching_radius(&self, channel: &Channel) -> f64 {
-        let a13 = (channel.target.a() as f64).cbrt();
-        self.rv.max(self.rw).max(self.rd) * a13 + 4.5 * self.av.max(self.aw).max(self.ad)
+        woods_saxon_tail_radius(self.rv, self.av, channel)
+            .max(woods_saxon_tail_radius(self.rw, self.aw, channel))
+            .max(woods_saxon_tail_radius(self.rd, self.ad, channel))
+            .max(woods_saxon_tail_radius(self.rso, self.aso, channel))
     }
 
     fn name(&self) -> &str {
@@ -475,12 +528,91 @@ mod tests {
     }
 
     #[test]
-    fn kd_matching_radius_reasonable() {
+    fn kd_matching_radius_beyond_potential_tail() {
         let kd = KoningDelaroche;
         let ch = fe56_n();
         let r_match = kd.matching_radius(&ch);
-        // Should be around 7-10 fm for Fe-56
-        assert!(r_match > 5.0 && r_match < 15.0, "r_match = {}", r_match);
+        // ~27 fm for Fe-56 (R_v ~ 4.6 fm + 33 a_v): far past the old 7.7 fm, where the
+        // Woods-Saxon tail is still ~1e-2 of its depth.
+        assert!(r_match > 25.0 && r_match < 30.0, "r_match = {}", r_match);
+        for l in [0, 5] {
+            let v = kd.potential(r_match, 1.0, l, l as f64 + 0.5, &ch);
+            assert!(v.norm() < 1e-12, "|V(r_match)| = {} MeV", v.norm());
+        }
+    }
+
+    #[test]
+    fn kd_spin_orbit_is_attractive_thomas_form() {
+        // At r = R_so the normalized derivative g = 1, so the j = l +- 1/2 splitting is
+        // U(l+1/2) - U(l-1/2) = -(V_so + i W_so) (2l+1)/2 / (a_so R_so)   (KD Eq. 2).
+        let kd = KoningDelaroche;
+        let ch = fe56_n();
+        let e = 5.0;
+        let params = KdParameters::global(&ch);
+        let p = params.depths(e, &ch);
+        let aso = params.aso;
+        let r_so = params.rso * 56f64.cbrt();
+        for l in [1u32, 4] {
+            let lf = l as f64;
+            let up = kd.potential(r_so, e, l, lf + 0.5, &ch);
+            let down = kd.potential(r_so, e, l, lf - 0.5, &ch);
+            let split = up - down;
+            let scale = (2.0 * lf + 1.0) / 2.0 / (aso * r_so);
+            assert!(split.re < 0.0, "j = l+1/2 must be more attractive");
+            assert!(
+                (split.re - (-p.v_so * scale)).abs() < 1e-12,
+                "l={l}: Re split {} vs {}",
+                split.re,
+                -p.v_so * scale
+            );
+            // Imaginary part: this crate stores -Im(U) (absorption > 0).
+            assert!(
+                (split.im - (p.w_so * scale)).abs() < 1e-12,
+                "l={l}: Im split {} vs {}",
+                split.im,
+                p.w_so * scale
+            );
+        }
+    }
+
+    #[test]
+    fn kd_proton_coulomb_correction_is_shifted_energy() {
+        // KD Eq. (7): V_p(E) = V(E) + Vc_bar v1 (v2 - 2 v3 dE + 3 v4 dE^2) = V(E - Vc_bar)
+        // to first order, i.e. V(E) - Vc_bar dV/dE with the full depth derivative.
+        let ch = fe56_p();
+        let params = KdParameters::global(&ch);
+        let vcbar = 1.73 * 26.0 / (params.rc * 56f64.cbrt());
+        let no_coulomb = KdParameters {
+            rc: 0.0,
+            ..params.clone()
+        };
+        for e in [1.0, 10.0, 50.0] {
+            let v = params.depths(e, &ch).v_real;
+            let eps = 1e-4;
+            let dvde = (no_coulomb.depths(e + eps, &ch).v_real
+                - no_coulomb.depths(e - eps, &ch).v_real)
+                / (2.0 * eps);
+            let expected = no_coulomb.depths(e, &ch).v_real - vcbar * dvde;
+            assert!((v - expected).abs() < 1e-6, "E={e}: {v} vs {expected}");
+            // ~ +3 MeV for Fe-56, not the ~0.06 MeV of a correction without v1.
+            assert!(v - no_coulomb.depths(e, &ch).v_real > 2.0);
+        }
+    }
+
+    #[test]
+    fn kd_local_with_global_parameters_matches_global() {
+        let ch = fe56_n();
+        let local = KoningDelarocheLocal::new(KdParameters::global(&ch));
+        let kd = KoningDelaroche;
+        assert_eq!(local.matching_radius(&ch), kd.matching_radius(&ch));
+        for r in [0.5, 4.0, 6.0] {
+            for (l, j) in [(0, 0.5), (3, 2.5), (3, 3.5)] {
+                assert_eq!(
+                    local.potential(r, 2.0, l, j, &ch),
+                    kd.potential(r, 2.0, l, j, &ch)
+                );
+            }
+        }
     }
 
     #[test]
@@ -494,6 +626,27 @@ mod tests {
         let v = ms.potential(0.0, 20.0, 0, 0.0, &ch);
         assert!(v.re < -100.0); // Deep real well for alpha
         assert!(v.im > 0.0); // Absorptive (positive Im in our Numerov convention)
+    }
+
+    #[test]
+    fn custom_omp_is_absorptive() {
+        // Same imaginary-part convention as KD: positive surface/volume depths absorb flux.
+        let omp = CustomOmp::default();
+        let ch = fe56_n();
+        let kd = KoningDelaroche;
+        let big_r = omp.rd * 56f64.cbrt();
+        assert!(omp.potential(big_r, 5.0, 0, 0.5, &ch).im > 0.0);
+        assert!(kd.potential(big_r, 5.0, 0, 0.5, &ch).im > 0.0);
+        let s = crate::numerov::numerov_integrate(
+            &omp,
+            &ch,
+            5.0,
+            0,
+            0.5,
+            &nucrust_core::backend::NumerovConfig::default(),
+        )
+        .unwrap();
+        assert!(s.norm() < 1.0, "|S| = {} must be < 1", s.norm());
     }
 
     #[test]

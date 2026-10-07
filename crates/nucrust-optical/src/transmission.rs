@@ -144,6 +144,59 @@ mod tests {
         }
     }
 
+    /// Delegates to an inner potential but matches further out.
+    struct ExtendedMatching<P>(P, f64);
+
+    impl<P: OpticalPotential> OpticalPotential for ExtendedMatching<P> {
+        fn potential(
+            &self,
+            r: f64,
+            e: f64,
+            l: u32,
+            j: f64,
+            ch: &Channel,
+        ) -> num_complex::Complex64 {
+            self.0.potential(r, e, l, j, ch)
+        }
+        fn coulomb_radius(&self, ch: &Channel) -> f64 {
+            self.0.coulomb_radius(ch)
+        }
+        fn matching_radius(&self, ch: &Channel) -> f64 {
+            self.0.matching_radius(ch) + self.1
+        }
+        fn name(&self) -> &str {
+            "extended matching"
+        }
+    }
+
+    #[test]
+    fn kd_transmission_converged_in_matching_radius() {
+        // The default KD matching radius must be past the potential tail: moving it 10 fm
+        // further out may not change any T_lj. (The old 1.25 A^1/3 + 2.9 fm radius left
+        // high-l T up to ~100% low.)
+        let kd = crate::omp::KoningDelaroche;
+        let ch = fe56_n();
+        let energies = EnergyGrid::from_values(vec![0.001, 0.1, 1.0, 5.0, 20.0]).unwrap();
+        let config = NumerovConfig {
+            max_l: 20,
+            ..NumerovConfig::default()
+        };
+        let tc = compute_transmission_coeffs(&kd, &ch, &energies, &config).unwrap();
+        let tc_far =
+            compute_transmission_coeffs(&ExtendedMatching(kd, 10.0), &ch, &energies, &config)
+                .unwrap();
+        assert_eq!(tc.l_max, tc_far.l_max);
+        for (i, (&a, &b)) in tc.data.iter().zip(&tc_far.data).enumerate() {
+            // Below ~1e-9, 1 - |S|^2 approaches its ~1e-15 rounding floor.
+            if b > 1e-9 {
+                assert!(
+                    ((a - b) / b).abs() < 1e-6,
+                    "flat index {i}: T = {a} vs {b} with r_match + 10 fm"
+                );
+            }
+        }
+    }
+
     #[test]
     fn transmission_computation_succeeds() {
         let omp = CustomOmp::default();
