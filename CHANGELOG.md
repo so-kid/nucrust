@@ -34,7 +34,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   previously applied Steed at l_min with the asymptotic-phase sign and an
   upward F recurrence, and returned unconverged continued fractions silently.
 
+#### GPU Coulomb wave functions (`nucrust-gpu`, `kernels/coulomb_device.cu`)
+- `coulomb_wave_device()` is now a port of the CPU algorithm above. It ran
+  Steed's method directly at the requested l with the sign of F taken from
+  `sin(rho - eta ln 2rho - l pi/2)` (without sigma_l), so F and G could have
+  the wrong sign, and in the forbidden region it returned garbage or status -1.
+  It now uses CF1 at l with the exact Lentz sign, downward recurrence for F,
+  the l = 0 normalization (Steed / 1F1 series / rho shift with Taylor
+  integration) and upward recurrence for G, and replaces the Lentz CF2 with
+  Steed's summation. All 106 mpmath points agree to < 1e-12 (max 1.3e-13).
+- `coulomb_batch_device` also returns F', G' and a per-point status (0, or -1 /
+  -2 when CF1 / CF2 does not converge; values are then NaN).
+  `gpu_coulomb_batch_full` exposes them; `gpu_coulomb_batch` is unchanged.
+
 ### Added
+- `scripts/check_coulomb_device_host.py`: compiles `kernels/coulomb_device.cu`
+  as host C++ and checks it against the mpmath reference data, for machines
+  without CUDA. On a GPU, `cargo test -p nucrust-gpu --features cuda` runs the
+  same comparison (`gpu_coulomb_mpmath_reference`) plus a GPU-vs-CPU check.
 - mpmath reference data: forbidden-region (l > 0, near the turning point,
   large eta), small-rho, and attractive (eta < 0) groups. Reference F'/G' are
   now exact (from the l recurrence) instead of finite differences. They are

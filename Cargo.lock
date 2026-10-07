@@ -1041,6 +1041,8 @@ dependencies = [
  "nucrust-core",
  "nucrust-special",
  "num-complex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
