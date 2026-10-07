@@ -115,11 +115,13 @@ nucrust/                    ← ワークスペースルート
    （golden file は `tests/reference_data/`, 検証テストは `crates/nucrust-special/tests/`）
 3. **性質ベーステスト**: `proptest` で物理的制約（断面積 ≥ 0, 詳細釣り合い 等）を検証
    （nucrust-core / nucrust-optical / nucrust-hf の dev-dependencies）
+4. **TALYS 比較（ACC-02/03）**: `crates/nucrust/tests/golden_talys.rs` が TALYS-2.25 golden data
+   （`tests/reference_data/talys/`）と比較。現状は回帰ラチェットのみ通過、10⁻⁶ 受け入れテストは `#[ignore]`（未達, task.md T-2A.13 / T-2B.14）
 
 ### 未導入（計画のみ）
 - `criterion` 回帰ベンチマーク（dev-dependency は設定済みだがベンチターゲット未作成）
 - `cargo-fuzz` ファズテスト
-- TALYS / AZURE2 との比較検証（task.md の未完了項目 ACC-02〜04）
+- AZURE2 との比較検証（ACC-04）。TALYS 比較（ACC-02/03）はテスト実装済みだが 10⁻⁶ 未達
 
 ### 精度要件（受け入れ基準）
 | 要件 | 比較対象 | 許容誤差 |
