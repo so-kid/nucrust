@@ -97,7 +97,7 @@ pub fn gpu_batch_numerov(
 
     // Launch kernel
     let block_size = 256u32;
-    let grid_size = (n_tasks as u32 + block_size - 1) / block_size;
+    let grid_size = (n_tasks as u32).div_ceil(block_size);
 
     unsafe {
         stream
@@ -171,8 +171,9 @@ pub fn gpu_batch_numerov(
             };
 
             // Store for both j = l-1/2 and j = l+1/2 (simplified: same value)
-            let flat_idx_j0 = (l as usize) * (2 * n_e) + 0 * n_e + e_idx;
-            let flat_idx_j1 = (l as usize) * (2 * n_e) + 1 * n_e + e_idx;
+            // Layout: [l][j_idx][e_idx]; j_idx = 0 has zero offset, j_idx = 1 is offset by n_e.
+            let flat_idx_j0 = (l as usize) * (2 * n_e) + e_idx;
+            let flat_idx_j1 = (l as usize) * (2 * n_e) + n_e + e_idx;
             data[flat_idx_j0] = if l > 0 { t_lj } else { 0.0 }; // j = l-1/2 (invalid for l=0)
             data[flat_idx_j1] = t_lj; // j = l+1/2
         }
@@ -232,7 +233,7 @@ mod tests {
         // All T values should be finite and in [0, 1]
         for &t in &tc.data {
             assert!(
-                t.is_finite() && t >= 0.0 && t <= 1.0,
+                t.is_finite() && (0.0..=1.0).contains(&t),
                 "T = {} out of range",
                 t
             );

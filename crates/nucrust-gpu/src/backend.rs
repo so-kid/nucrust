@@ -19,6 +19,10 @@ pub struct GpuBackend {
     /// Default CUDA stream.
     stream: Arc<CudaStream>,
     /// Cached compiled kernel modules.
+    ///
+    /// Currently a placeholder (`GpuModuleCache` holds no CUDA modules yet), so the
+    /// field is not read; it is kept as the future home of the compiled modules.
+    #[allow(dead_code)]
     modules: GpuModuleCache,
 }
 
@@ -120,7 +124,7 @@ extern "C" __global__ void vector_add(const double* a, const double* b, double* 
 
         // Launch kernel
         let block_size = 256u32;
-        let grid_size = (n as u32 + block_size - 1) / block_size;
+        let grid_size = (n as u32).div_ceil(block_size);
 
         unsafe {
             self.stream
@@ -182,7 +186,7 @@ impl ComputeBackend for GpuBackend {
     ) -> Result<CrossSection, CoreError> {
         let (nld_t, nld_a) = match nld_params {
             NldModelParams::ConstantTemperature { t, e0: _ } => (*t, 6.0),
-            NldModelParams::Bsfg { a, delta: _, .. } => (0.88, *a),
+            NldModelParams::Bsfg { a, .. } => (0.88, *a),
             _ => (0.88, 6.0),
         };
         let (gsf_e, gsf_g, gsf_s) = match gsf_params {
@@ -284,8 +288,8 @@ mod tests {
         let a: Vec<f64> = (0..n).map(|i| i as f64).collect();
         let b: Vec<f64> = (0..n).map(|i| (i * 2) as f64).collect();
         let c = backend.test_add_kernel(&a, &b).unwrap();
-        for i in 0..n {
-            assert_eq!(c[i], (i * 3) as f64, "mismatch at index {}", i);
+        for (i, &ci) in c.iter().enumerate() {
+            assert_eq!(ci, (i * 3) as f64, "mismatch at index {}", i);
         }
     }
 }

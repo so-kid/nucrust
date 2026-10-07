@@ -16,9 +16,9 @@ pub struct GpuCoulombTable {
     pub d_f: CudaSlice<f64>,
     /// G_l(eta, rho) values [n_eta * n_rho * n_l]
     pub d_g: CudaSlice<f64>,
-    /// eta grid [n_eta]
+    /// eta grid \[n_eta\]
     pub d_eta: CudaSlice<f64>,
-    /// rho grid [n_rho]
+    /// rho grid \[n_rho\]
     pub d_rho: CudaSlice<f64>,
     /// Number of eta grid points.
     pub n_eta: usize,
@@ -30,13 +30,17 @@ pub struct GpuCoulombTable {
 
 /// Configuration for Coulomb table generation.
 pub struct CoulombTableConfig {
-    /// eta range: [eta_min, eta_max]
+    /// Lower bound of the Sommerfeld parameter eta range.
     pub eta_min: f64,
+    /// Upper bound of the Sommerfeld parameter eta range.
     pub eta_max: f64,
+    /// Number of eta grid points.
     pub n_eta: usize,
-    /// rho range: [rho_min, rho_max]
+    /// Lower bound of the rho (= kr) range.
     pub rho_min: f64,
+    /// Upper bound of the rho (= kr) range.
     pub rho_max: f64,
+    /// Number of rho grid points.
     pub n_rho: usize,
     /// Maximum l
     pub l_max: u32,

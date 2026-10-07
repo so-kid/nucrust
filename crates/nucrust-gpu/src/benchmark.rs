@@ -171,7 +171,7 @@ mod tests {
         // All values should be finite (basic precision check)
         for &t in &tc.data {
             assert!(t.is_finite(), "GPU TC value not finite: {}", t);
-            assert!(t >= 0.0 && t <= 1.0, "GPU TC out of [0,1]: {}", t);
+            assert!((0.0..=1.0).contains(&t), "GPU TC out of [0,1]: {}", t);
         }
 
         // Note: full ACC-06 requires comparing GPU FP32 vs FP64 reference.

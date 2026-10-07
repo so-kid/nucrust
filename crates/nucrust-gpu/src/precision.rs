@@ -57,10 +57,9 @@ pub fn detect_precision(ctx: &Arc<CudaContext>) -> Result<PrecisionStrategy, Cor
         (9, 0) => PrecisionStrategy::Full64, // H100: 1:2
         // Data center / professional with moderate FP64
         (8, 9) => PrecisionStrategy::Full64, // L4, Ada Lovelace: 1:2 (FP64 capable)
-        (8, 6) => PrecisionStrategy::Mixed32Refine, // A40, RTX A5000: 1:64
+        (8, 6) => PrecisionStrategy::Mixed32Refine, // Ampere A40 / RTX A5000 / consumer: 1:64
         // Consumer GPUs with poor FP64
         (7, 5) => PrecisionStrategy::Mixed32Refine, // Turing consumer: 1:32
-        (8, 6) => PrecisionStrategy::Mixed32Refine, // Ampere consumer: 1:64
         // Default: assume FP64 is acceptable
         _ => {
             if cc_major >= 7 {

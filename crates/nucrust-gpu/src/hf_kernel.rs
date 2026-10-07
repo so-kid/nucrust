@@ -69,7 +69,7 @@ pub fn gpu_hf_summation(
     stream.memcpy_htod(&tc.data, &mut d_tc).map_err(gpu_err)?;
 
     let block_size = 256u32;
-    let grid_size = (n_e as u32 + block_size - 1) / block_size;
+    let grid_size = (n_e as u32).div_ceil(block_size);
 
     unsafe {
         stream
@@ -141,6 +141,8 @@ mod tests {
         let n_l = (l_max + 1) as usize;
         let mut tc_data = vec![0.0; n_l * 2 * n_e];
         // Set some non-zero values for l=0, j=0.5 (j_idx=1)
+        // Explicit [l][j_idx][e_idx] index arithmetic documents the layout.
+        #[allow(clippy::identity_op, clippy::erasing_op)]
         for e_idx in 0..n_e {
             tc_data[0 * 2 * n_e + 1 * n_e + e_idx] = 0.8; // l=0, j=0.5
             tc_data[1 * 2 * n_e + 1 * n_e + e_idx] = 0.5; // l=1, j=1.5

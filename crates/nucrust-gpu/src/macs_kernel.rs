@@ -86,7 +86,7 @@ pub fn gpu_macs_integrate(
     let k_boltzmann = nucrust_core::units::BOLTZMANN_MEV;
 
     let block_size = 256u32;
-    let grid_size = (n_t as u32 + block_size - 1) / block_size;
+    let grid_size = (n_t as u32).div_ceil(block_size);
 
     unsafe {
         stream

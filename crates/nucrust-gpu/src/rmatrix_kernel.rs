@@ -95,7 +95,7 @@ pub fn gpu_rmatrix_solve(
         .map_err(gpu_err)?;
 
     let block_size = 256u32;
-    let grid_size = (n_e as u32 + block_size - 1) / block_size;
+    let grid_size = (n_e as u32).div_ceil(block_size);
 
     unsafe {
         stream

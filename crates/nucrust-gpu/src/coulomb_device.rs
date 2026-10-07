@@ -53,7 +53,7 @@ pub fn gpu_coulomb_batch(
     stream.memcpy_htod(l, &mut d_l).map_err(gpu_err)?;
 
     let block_size = 256u32;
-    let grid_size = (n as u32 + block_size - 1) / block_size;
+    let grid_size = (n as u32).div_ceil(block_size);
 
     unsafe {
         stream
@@ -162,7 +162,7 @@ mod tests {
         let rhos: Vec<f64> = (0..n).map(|i| 1.0 + (i as f64) * 0.03).collect();
         let ls: Vec<i32> = (0..n).map(|i| (i % 5) as i32).collect();
 
-        let (f_vals, g_vals) = gpu_coulomb_batch(&ctx, &stream, &etas, &rhos, &ls).unwrap();
+        let (f_vals, _g_vals) = gpu_coulomb_batch(&ctx, &stream, &etas, &rhos, &ls).unwrap();
 
         assert_eq!(f_vals.len(), n);
         let finite_count = f_vals.iter().filter(|v| v.is_finite()).count();
