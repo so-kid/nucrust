@@ -176,3 +176,76 @@ fn e2e_pipeline_all_sigma_non_negative() {
         }
     }
 }
+
+#[test]
+fn e2e_fe56_cross_section_magnitudes() {
+    use nucrust_core::traits::LevelDensity;
+    use nucrust_core::Parity;
+    use nucrust_hf::gsf::StandardLorentzian;
+    use nucrust_hf::hf::{self, HfCalculation};
+    use nucrust_hf::nld::ConstantTemperature;
+
+    let ch = fe56_ng_channel();
+    let energies = EnergyGrid::from_values(vec![0.03, 1.0]).unwrap();
+    let config = nucrust_core::backend::NumerovConfig {
+        max_l: 10,
+        ..Default::default()
+    };
+    let tc = cpu_transmission_coeffs(&ch, &energies, &config).unwrap();
+
+    // s-wave transmission (j = 1/2 slot) of Koning-Delaroche at 1 MeV: ~0.93.
+    let t0 = tc.get(0, 1, 1);
+    assert!(t0 > 0.85 && t0 < 1.0, "T_0(1 MeV) = {t0}");
+    assert_eq!(tc.get_l_averaged(0, 1), t0);
+
+    // CT level density tuned to the s-wave resonance spacing of 57Fe (D0 ~ 25 keV).
+    let nld = ConstantTemperature {
+        temperature: 0.88,
+        e0: 1.94,
+        a: 6.21,
+    };
+    let fe57 = Nuclide::new(26, 57).unwrap();
+    let d0_kev = 1e3 / nld.rho(&fe57, 7.646, 0.5, Parity::Positive);
+    assert!(d0_kev > 15.0 && d0_kev < 40.0, "D0 = {d0_kev} keV");
+
+    let gsf = StandardLorentzian {
+        e_gdr: 16.36,
+        gamma_gdr: 4.58,
+        sigma_gdr: 136.0,
+        m1_params: None,
+    };
+    let hf_config = hf::HfConfig {
+        two_j_max: 20,
+        exit_channels: vec![Projectile::Gamma],
+        ..hf::HfConfig::default()
+    };
+    let calc = HfCalculation {
+        entrance: &ch,
+        tc_entrance: &tc,
+        exit_particle_channels: vec![],
+        nld: &nld,
+        gsf: &gsf,
+        config: &hf_config,
+        discrete_levels: None,
+    };
+    let r = hf::hauser_feshbach(&calc).unwrap();
+
+    // Compound formation (= optical reaction) cross section at 1 MeV: ~2.3 b, not ~11 b.
+    assert!(
+        r[1].sigma_cn > 1800.0 && r[1].sigma_cn < 2800.0,
+        "sigma_CN(1 MeV) = {} mb",
+        r[1].sigma_cn
+    );
+    // Radiative capture: ~10 mb at 30 keV, a few mb at 1 MeV (inelastic competition
+    // is not included here, which matters only above the 847 keV 2+ level).
+    assert!(
+        r[0].sigma_channels[0] > 3.0 && r[0].sigma_channels[0] < 30.0,
+        "sigma_gamma(30 keV) = {} mb",
+        r[0].sigma_channels[0]
+    );
+    assert!(
+        r[1].sigma_channels[0] > 1.0 && r[1].sigma_channels[0] < 10.0,
+        "sigma_gamma(1 MeV) = {} mb",
+        r[1].sigma_channels[0]
+    );
+}
