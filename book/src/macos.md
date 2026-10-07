@@ -8,7 +8,7 @@ and the NEON SIMD units of Apple M-series chips.
 
 ```bash
 # Fastest CPU configuration on an Apple Silicon Mac
-cargo build --release --features "parallel simd"
+cargo build --release -p nucrust --features "parallel simd"
 cargo test  -p nucrust --features "parallel simd"
 ```
 
@@ -33,7 +33,7 @@ which on macOS counts both performance and efficiency cores. To restrict
 work to a fixed number of threads (e.g. only P-cores), set:
 
 ```bash
-RAYON_NUM_THREADS=8 cargo run --release --features parallel -- calc ...
+RAYON_NUM_THREADS=8 cargo run --release -p nucrust --features parallel -- calc ...
 ```
 
 ## `simd` — NEON vectorization
@@ -59,7 +59,7 @@ cross-compilation from other hosts working. If you build only for your own
 machine, `-C target-cpu=native` selects the newest CPU you have:
 
 ```bash
-RUSTFLAGS="-C target-cpu=native" cargo build --release --features "parallel simd"
+RUSTFLAGS="-C target-cpu=native" cargo build --release -p nucrust --features "parallel simd"
 ```
 
 ## HDF5 on macOS

@@ -25,7 +25,8 @@ speedups over existing Fortran codes (TALYS, AZURE2) via CUDA batch execution.
 - **GPU acceleration** (CUDA via `cudarc`): batched Numerov, HF summation,
   R-matrix solve, MACS integration
 - **Data I/O**: RIPL-3, REACLIB, HDF5, TOML configuration
-- **Python bindings** via PyO3 + rust-numpy
+- **CPU parallelism** (rayon) and SIMD (`wide`, AVX2/NEON) — the fast path on macOS
+- **Python bindings** via PyO3 + rust-numpy (abi3 wheel, CPython ≥ 3.9)
 
 ## Build
 
@@ -37,8 +38,10 @@ cargo test --workspace
 ```
 
 Optional features live on individual crates: `cuda` (nucrust-gpu, requires
-CUDA Toolkit 12+), `hdf5_io` (nucrust-data, requires HDF5 1.10.x), `simd`
-(nucrust-special). See the user guide's Installation chapter for details.
+CUDA Toolkit 12+), `hdf5_io` (nucrust-data, requires HDF5 1.10.x), and the
+CPU acceleration features `parallel` / `simd` (forwarded by the `nucrust`
+crate, e.g. `cargo build --release -p nucrust --features "parallel simd"`).
+See the user guide's Installation chapter for details.
 
 ## Quick Start
 

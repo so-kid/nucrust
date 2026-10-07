@@ -18,22 +18,24 @@ The CLI binary will be at `target/release/nucrust`.
 
 ## Feature Flags
 
-Features are defined on individual crates (the aggregate `nucrust` crate has
-no feature flags of its own):
+Features are defined on individual crates. The aggregate `nucrust` crate
+forwards the CPU acceleration features (`parallel`, `simd`) to its
+dependencies:
 
 | Feature | Crate | Description | Default |
 |---------|-------|-------------|---------|
 | `parallel` | `nucrust-core` | rayon-based CPU parallelism | **on** |
-| `cuda` | `nucrust-gpu` | GPU acceleration (requires CUDA) | off |
-| `hdf5_io` | `nucrust-data` | HDF5 file I/O | off |
-| `simd` | `nucrust-special` | SIMD-optimized Coulomb functions | off |
+| `parallel` | `nucrust-special`, `nucrust-optical`, `nucrust-hf`, `nucrust` | Energy-parallel hot loops (see [macOS / Apple Silicon](./macos.md)) | off |
+| `simd` | `nucrust-special`, `nucrust` | SIMD-optimized Coulomb functions | off |
+| `cuda` | `nucrust-gpu` | GPU acceleration (requires CUDA Toolkit / `nvcc` at build time) | off |
+| `hdf5_io` | `nucrust-data` | HDF5 file I/O (requires HDF5 1.10.x) | off |
 
 Build with specific features by targeting the crate that defines them:
 
 ```bash
+cargo build --release -p nucrust --features "parallel simd"
 cargo build --release -p nucrust-gpu --features cuda
 cargo build --release -p nucrust-data --features hdf5_io
-cargo test --workspace --all-features    # everything at once
 ```
 
 ## HDF5 Setup
@@ -56,16 +58,19 @@ HDF5_DIR = "/opt/homebrew/opt/hdf5@1.10"
 Requires CUDA Toolkit 12.0+ and an NVIDIA GPU with compute capability 7.0+.
 
 ```bash
-cargo build --release --features cuda
+cargo build --release -p nucrust-gpu --features cuda
 ```
 
 ## Python Bindings
 
-Requires Python 3.8+ and [maturin](https://www.maturin.rs/):
+Requires Python 3.9+ and [maturin](https://www.maturin.rs/). The extension
+is built against the stable ABI (`abi3`), so one wheel works on every
+CPython ≥ 3.9. With [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install maturin
 cd crates/nucrust-python
+uv venv && source .venv/bin/activate
+uv pip install maturin numpy
 maturin develop --release
 ```
 
@@ -73,5 +78,6 @@ maturin develop --release
 
 ```bash
 cargo test --workspace
-cargo test --workspace --all-features  # full validation
+# All features except `cuda` (which needs nvcc); this is what CI runs
+cargo test --workspace --features nucrust-data/hdf5_io,nucrust/parallel,nucrust/simd
 ```

@@ -43,6 +43,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `CLAUDE.md` updated to reflect the implemented state (cudarc 0.16, actual
   dependency graph, parser approach, test infrastructure status)
 
+#### Build and CI fixes
+- `nucrust-python`: build against the stable ABI (`abi3-py39`) so the workspace
+  builds with any CPython ≥ 3.9 (including 3.14), and add a `build.rs` that
+  emits `-undefined dynamic_lookup` so plain `cargo build` links on macOS
+- CI: the all-features job now tests every non-CUDA feature (installs
+  libhdf5-dev); the `cuda` feature is compile-checked in an `nvidia/cuda`
+  container since it needs `nvcc` at build time
+- Installation / macOS book chapters, README, and CLAUDE.md updated for the
+  `parallel` / `simd` features and package-scoped `--features` commands
+
 #### Phase 0: Project Foundation
 - Initial project structure with Cargo workspace and documentation
 - Software Requirements Specification (SRS v0.2.1)

@@ -29,14 +29,30 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  # All features except `cuda`, which needs nvcc at build time (see check-cuda).
   test-all-features:
-    name: Test (all features)
+    name: Test (all non-CUDA features)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libhdf5-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-features
+      - run: cargo test --workspace --features nucrust-data/hdf5_io,nucrust/parallel,nucrust/simd
+
+  # Compile-only check of the CUDA backend (no GPU available on hosted runners).
+  check-cuda:
+    name: Check (cuda feature)
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.3-devel-ubuntu24.04
+    steps:
+      - run: apt-get update && apt-get install -y curl git build-essential pkg-config
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p nucrust-gpu --features cuda --all-targets -- -D warnings
 
   test-macos:
     name: Test (macOS Apple Silicon)

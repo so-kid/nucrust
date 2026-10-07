@@ -18,8 +18,11 @@ nucrust-optical = { workspace = true }
 nucrust-hf = { workspace = true }
 nucrust-rmatrix = { workspace = true }
 nucrust-astro = { workspace = true }
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
 numpy = "0.22"
+
+[build-dependencies]
+pyo3-build-config = "0.22"
 
 [features]
 default = []

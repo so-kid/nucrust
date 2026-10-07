@@ -15,8 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo build --workspace                     # 全クレートビルド
 cargo build --workspace --release           # リリースビルド
 cargo test --workspace                      # 全ユニットテスト実行
-cargo test --workspace --all-features       # 全機能有効でテスト（受け入れ基準）
-cargo clippy --workspace -- -D warnings     # Lint（受け入れ基準: 警告ゼロ）
+cargo test --workspace --features nucrust-data/hdf5_io,nucrust/parallel,nucrust/simd
+                                            # cuda 以外の全機能でテスト（受け入れ基準・CI と同一）
+cargo clippy --workspace --all-targets -- -D warnings  # Lint（受け入れ基準: 警告ゼロ）
 cargo fmt --all                             # フォーマット
 ```
 
@@ -26,13 +27,18 @@ cargo test -p nucrust-special               # 例: Coulomb 関数クレートの
 cargo test -p nucrust-hf fe56               # 例: テスト名でフィルタ
 ```
 
-### GPU 機能（CUDA 環境必須）
+### CPU 並列化（macOS では主要な高速化経路）
 ```bash
-cargo test --features cuda --workspace
-cargo build --features cuda --release
+cargo build --release -p nucrust --features "parallel simd"
 ```
 
-### Python バインディング
+### GPU 機能（CUDA 環境必須。ビルド時に nvcc が必要）
+```bash
+cargo test -p nucrust-gpu --features cuda
+cargo build -p nucrust-gpu --features cuda --release
+```
+
+### Python バインディング（abi3: CPython ≥ 3.9。環境管理は uv）
 ```bash
 cd crates/nucrust-python && maturin develop  # 開発用インストール
 cd crates/nucrust-python && maturin build --release
@@ -64,8 +70,7 @@ nucrust/                    ← ワークスペースルート
 ├── docs/                   ← 設計時ドキュメント（凍結・歴史的資料）
 ├── data/                   ← テスト用サンプルデータ（RIPL-3 / REACLIB）
 ├── scripts/                ← mpmath 参照値生成スクリプト等
-├── tests/reference_data/   ← 精度検証用 golden file
-└── memo/                   ← 実装時の調査メモ
+└── tests/reference_data/   ← 精度検証用 golden file
 ```
 
 **クレート依存方向**（`nucrust-core` が最下層）:

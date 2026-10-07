@@ -262,7 +262,7 @@
 - [x] **T-4B.2** NumPy 連携（§11.2: `numpy` crate `PyArray1::from_slice_bound`）
 - [x] **T-4B.3** Python 関数ラッパー（§11.1: `calc_transmission_coeffs`, `calc_hf_cross_section`, `calc_macs`, `fit_reaclib`）
 - [x] **T-4B.4** maturin ビルド設定（`pyproject.toml`）
-- [ ] **T-4B.5** pynucastro 連携テスト（§11.3: REACLIB 出力→pynucastro 読み込み）
+- [ ] **T-4B.5** pynucastro 連携テスト（§11.3: Python 側で実際に pynucastro に読み込ませる E2E テスト。Rust 側のフォーマット受け入れテストは T-4E.4 で完了）
 
 ### 4C. nucrust CLI（§12）
 
