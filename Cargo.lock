@@ -1039,6 +1039,7 @@ dependencies = [
  "approx",
  "cudarc",
  "nucrust-core",
+ "nucrust-hf",
  "nucrust-special",
  "num-complex",
 ]

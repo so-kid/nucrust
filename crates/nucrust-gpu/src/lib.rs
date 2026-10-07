@@ -20,6 +20,7 @@ pub mod coulomb_hybrid;
 pub mod coulomb_table;
 #[cfg(feature = "cuda")]
 pub mod hf_kernel;
+pub mod hf_reference;
 #[cfg(feature = "cuda")]
 pub mod kernel_cache;
 #[cfg(feature = "cuda")]

@@ -7,6 +7,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- GPU Hauser-Feshbach kernel (`hf_summation.cu`) brought in line with the CPU
+  fixes: Jπ loop over both parities with j-I coupling and (-1)^l parity selection
+  (previously l-coupling over integer and half-integer J, no parity),
+  f_E1 with the 1/(3π²(ħc)²) constant, T_γ with its 2π factor, E1/M1/E2 gamma
+  emission with the CT spin distribution and final spins from |J-L|.
+- `GpuHfParams` gains projectile/target spin and parity, compound mass number,
+  and the CT energy shift E0; `GpuBackend::hf_summation` rejects NLD/GSF models
+  the kernel does not implement instead of substituting defaults.
+- CLI `export --format table` wrote the empty l=0, j=-1/2 slot as T_{l=0}.
+
+### Added
+- `nucrust_gpu::hf_reference::hf_summation_host`: host replica of the HF kernel,
+  tested against `nucrust-hf`; `scripts/hf_kernel_cpu/run.sh` compiles and runs
+  the kernel source on the CPU as C++.
+
 ## [0.1.0] - 2026-10-07
 
 ### Added
