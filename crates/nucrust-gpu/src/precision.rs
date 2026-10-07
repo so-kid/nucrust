@@ -1,11 +1,19 @@
 //! Mixed precision strategy (T-3A.4, §10.5).
 //!
 //! Detects FP64/FP32 throughput ratio on the GPU and selects precision
-//! strategy accordingly. For GPUs with poor FP64 (e.g., consumer cards
-//! with 1:32 ratio), uses FP32 with iterative refinement.
+//! strategy accordingly. For GPUs with poor FP64 (e.g., consumer and
+//! workstation cards with a 1:32 or 1:64 ratio), uses FP32 with iterative
+//! refinement.
+//!
+//! The compute-capability → strategy mapping ([`strategy_for_cc`]) is pure
+//! and available without the `cuda` feature; [`detect_precision`] queries
+//! the device and requires it.
 
+#[cfg(feature = "cuda")]
 use cudarc::driver::CudaContext;
+#[cfg(feature = "cuda")]
 use nucrust_core::CoreError;
+#[cfg(feature = "cuda")]
 use std::sync::Arc;
 
 /// Precision strategy for GPU computation.
@@ -19,12 +27,32 @@ pub enum PrecisionStrategy {
     Pure32,
 }
 
+/// Select the precision strategy for a CUDA compute capability.
+///
+/// Only architectures with a native FP64:FP32 throughput ratio of 1:2 get
+/// [`PrecisionStrategy::Full64`]; all others (1:32 or 1:64, including
+/// unknown future capabilities) use [`PrecisionStrategy::Mixed32Refine`],
+/// which still meets [`MIXED_PRECISION_TOL`].
+pub fn strategy_for_cc(cc_major: i32, cc_minor: i32) -> PrecisionStrategy {
+    match (cc_major, cc_minor) {
+        // HPC GPUs with FP64:FP32 = 1:2
+        (6, 0) => PrecisionStrategy::Full64,  // P100 (Pascal)
+        (7, 0) => PrecisionStrategy::Full64,  // V100 (Volta)
+        (8, 0) => PrecisionStrategy::Full64,  // A100 / A30 (Ampere)
+        (9, 0) => PrecisionStrategy::Full64,  // H100 / H200 (Hopper)
+        (10, 0) => PrecisionStrategy::Full64, // B200 (Blackwell)
+        // Everything else has weak FP64, e.g.:
+        // 6.1 Pascal consumer 1:32, 7.2 Xavier 1:32, 7.5 Turing 1:32,
+        // 8.6 Ampere A40 / RTX 30xx 1:64, 8.7 Orin 1:64,
+        // 8.9 Ada L4 / L40 / RTX 40xx 1:64, 12.x Blackwell RTX 1:64
+        _ => PrecisionStrategy::Mixed32Refine,
+    }
+}
+
 /// Detect the optimal precision strategy for the given GPU.
 ///
-/// Checks the FP64/FP32 throughput ratio:
-/// - ratio >= 1:2 → Full64 (e.g., A100, V100, L4)
-/// - ratio 1:4 to 1:16 → Mixed32Refine
-/// - ratio < 1:16 → Pure32 (e.g., consumer GeForce)
+/// Queries the compute capability and maps it via [`strategy_for_cc`].
+#[cfg(feature = "cuda")]
 pub fn detect_precision(ctx: &Arc<CudaContext>) -> Result<PrecisionStrategy, CoreError> {
     // Query compute capability
     let cc_major = ctx
@@ -49,26 +77,7 @@ pub fn detect_precision(ctx: &Arc<CudaContext>) -> Result<PrecisionStrategy, Cor
 
     let name = ctx.name().unwrap_or_else(|_| "Unknown".to_string());
 
-    // Known FP64/FP32 ratios by compute capability and architecture
-    let strategy = match (cc_major, cc_minor) {
-        // HPC GPUs with good FP64
-        (7, 0) => PrecisionStrategy::Full64, // V100: 1:2
-        (8, 0) => PrecisionStrategy::Full64, // A100: 1:2
-        (9, 0) => PrecisionStrategy::Full64, // H100: 1:2
-        // Data center / professional with moderate FP64
-        (8, 9) => PrecisionStrategy::Full64, // L4, Ada Lovelace: 1:2 (FP64 capable)
-        (8, 6) => PrecisionStrategy::Mixed32Refine, // Ampere A40 / RTX A5000 / consumer: 1:64
-        // Consumer GPUs with poor FP64
-        (7, 5) => PrecisionStrategy::Mixed32Refine, // Turing consumer: 1:32
-        // Default: assume FP64 is acceptable
-        _ => {
-            if cc_major >= 7 {
-                PrecisionStrategy::Full64
-            } else {
-                PrecisionStrategy::Mixed32Refine
-            }
-        }
-    };
+    let strategy = strategy_for_cc(cc_major, cc_minor);
 
     eprintln!(
         "GPU: {} (CC {}.{}), precision strategy: {:?}",
@@ -85,6 +94,39 @@ pub const MIXED_PRECISION_TOL: f64 = 1e-5;
 mod tests {
     use super::*;
 
+    #[test]
+    fn hpc_gpus_use_full64() {
+        for cc in [(6, 0), (7, 0), (8, 0), (9, 0), (10, 0)] {
+            assert_eq!(
+                strategy_for_cc(cc.0, cc.1),
+                PrecisionStrategy::Full64,
+                "{cc:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn weak_fp64_gpus_use_mixed() {
+        for cc in [
+            (5, 2),
+            (6, 1),
+            (7, 2),
+            (7, 5),
+            (8, 6),
+            (8, 7),
+            (8, 9),
+            (12, 0),
+            (99, 0),
+        ] {
+            assert_eq!(
+                strategy_for_cc(cc.0, cc.1),
+                PrecisionStrategy::Mixed32Refine,
+                "{cc:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "cuda")]
     #[test]
     fn detect_precision_runs() {
         let ctx = CudaContext::new(0).unwrap();
