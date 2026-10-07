@@ -77,7 +77,7 @@ def main():
 
     test_points = []
 
-    # === Tier 1: Standard cases ===
+    # === Tier 1: Standard cases (Bessel limits and moderate parameters) ===
     tier1 = [
         (0, 0.0, 1.0, "Bessel limit: F=sin(rho), G=cos(rho)"),
         (0, 0.0, 3.0, "Bessel limit rho=3"),
@@ -89,14 +89,23 @@ def main():
         (2, 1.5, 3.5, "Moderate eta, l=2"),
         (0, 1.0, 1.0, "eta=1, rho=1"),
         (1, 1.0, 3.0, "eta=1, l=1"),
+        (0, 0.5, 2.0, "Small eta, small rho"),
+        (1, 2.0, 8.0, "Oscillatory region l=1"),
+        (3, 1.0, 10.0, "Moderate l=3, oscillatory"),
     ]
 
-    # === Tier 2: Difficult cases (barrier penetration) ===
+    # === Tier 2: Difficult cases (barrier penetration, forbidden region) ===
     tier2 = [
         (0, 5.0, 3.0, "Barrier: eta=5, rho=3"),
         (0, 10.0, 5.0, "Deep barrier: eta=10, rho=5"),
         (0, 5.0, 10.0, "Near turning point: eta=5, rho=10"),
         (0, 2.0, 0.5, "Small rho, moderate eta"),
+        (0, 10.0, 1.0, "Deep forbidden: eta=10, rho=1"),
+        (0, 10.0, 20.0, "Near turning: eta=10, rho=20"),
+        (0, 20.0, 5.0, "Very deep barrier: eta=20, rho=5"),
+        (0, 20.0, 40.0, "Near turning: eta=20, rho=40"),
+        (1, 10.0, 3.0, "Barrier l=1: eta=10, rho=3"),
+        (2, 5.0, 2.0, "Barrier l=2: eta=5, rho=2"),
     ]
 
     # === Tier 3: High angular momentum ===
@@ -105,6 +114,26 @@ def main():
         (10, 5.0, 20.0, "High l=10"),
         (3, 0.0, 5.0, "Bessel l=3"),
         (5, 0.0, 8.0, "Bessel l=5"),
+        (10, 0.0, 15.0, "Bessel l=10"),
+        (15, 3.0, 25.0, "High l=15, eta=3"),
+        (20, 5.0, 40.0, "High l=20, eta=5"),
+        (10, 2.0, 15.0, "High l=10, moderate eta"),
+        (5, 5.0, 15.0, "l=5, eta=5, oscillatory"),
+        (8, 3.0, 12.0, "l=8, moderate parameters"),
+    ]
+
+    # === Tier 4: Extreme parameters (nuclear physics regime) ===
+    tier4 = [
+        (0, 30.0, 10.0, "Extreme eta=30, forbidden"),
+        (0, 30.0, 60.0, "Extreme eta=30, turning point"),
+        (0, 50.0, 20.0, "Very extreme eta=50"),
+        (0, 50.0, 100.0, "Extreme eta=50, turning point"),
+        (5, 20.0, 30.0, "High l + high eta"),
+        (10, 10.0, 30.0, "l=10, eta=10, intermediate"),
+        (0, 0.1, 0.1, "Small rho, small eta"),
+        (0, 0.01, 50.0, "Near-zero eta, large rho"),
+        (3, 10.0, 5.0, "l=3, deep forbidden"),
+        (15, 10.0, 40.0, "l=15, eta=10, near classical"),
     ]
 
     # === Extra: multiple l at same (eta, rho) for recurrence validation ===
@@ -113,13 +142,36 @@ def main():
         (1, 2.0, 5.0, "Recurrence l=1"),
         (2, 2.0, 5.0, "Recurrence l=2"),
         (3, 2.0, 5.0, "Recurrence l=3"),
+        (4, 2.0, 5.0, "Recurrence l=4"),
+        (5, 2.0, 5.0, "Recurrence l=5"),
+    ]
+
+    # === Nuclear physics cases (realistic Sommerfeld parameters) ===
+    nuclear = [
+        # Fe-56 + n at various energies (eta values from Sommerfeld parameter)
+        (0, 0.0, 4.5, "Fe56+n 1MeV: eta=0 (neutral)"),
+        (5, 0.0, 4.5, "Fe56+n 1MeV: l=5"),
+        (10, 0.0, 4.5, "Fe56+n 1MeV: l=10"),
+        (15, 0.0, 4.5, "Fe56+n 1MeV: l=15"),
+        # Be-7 + p (charged particle, solar reaction)
+        (0, 3.5, 2.0, "Be7+p 100keV: eta~3.5, rho~2"),
+        (1, 3.5, 2.0, "Be7+p 100keV: l=1"),
+        (2, 3.5, 2.0, "Be7+p 100keV: l=2"),
+        (0, 7.0, 1.0, "Be7+p 25keV: eta~7, rho~1"),
+        (0, 1.5, 5.0, "Be7+p 500keV: eta~1.5, rho~5"),
+        # Alpha capture
+        (0, 10.0, 3.0, "Alpha+C12 300keV: eta~10"),
+        (2, 10.0, 3.0, "Alpha+C12 300keV: l=2"),
+        (0, 5.0, 6.0, "Alpha+C12 1MeV: eta~5"),
     ]
 
     all_points = [
         ("tier1", tier1),
         ("tier2", tier2),
         ("tier3", tier3),
+        ("tier4_extreme", tier4),
         ("recurrence", extra),
+        ("nuclear_physics", nuclear),
     ]
 
     results = {}
