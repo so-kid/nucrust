@@ -32,7 +32,6 @@ pub mod multi_stream;
 pub mod numerov;
 #[cfg(feature = "cuda")]
 pub mod pipeline;
-#[cfg(feature = "cuda")]
 pub mod precision;
 #[cfg(feature = "cuda")]
 pub mod rmatrix_kernel;

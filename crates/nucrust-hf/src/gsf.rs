@@ -8,14 +8,24 @@ use nucrust_core::Nuclide;
 
 use std::f64::consts::PI;
 
+/// Conversion factor 1 / (3 π² (ħc)²) for a photoabsorption cross section in mb,
+/// giving the strength function f_{E1} in MeV⁻³:
+/// 0.1 fm²/mb / (3 π² (ħc)²) ≈ 8.674 × 10⁻⁸ mb⁻¹ MeV⁻².
+///
+/// Equals `0.1 / (3.0 * PI * PI * HBAR_C * HBAR_C)` with ħc = 197.3269804 MeV·fm
+/// (written as a literal to keep float arithmetic out of const context).
+pub const GSF_E1_CONST: f64 = 8.673_733_205_921_499e-8;
+
 // ============================================================================
 // Standard Lorentzian (SLO)
 // ============================================================================
 
 /// Standard Lorentzian (Brink-Axel) gamma-ray strength function.
 ///
-/// f_{E1}(E_gamma) = (1 / 3*pi^2) * sigma_GDR * Gamma_GDR * E_gamma * Gamma_GDR
+/// f_{E1}(E_gamma) = 1 / (3 pi^2 (hbar c)^2) * sigma_GDR * Gamma_GDR * E_gamma * Gamma_GDR
 ///                    / ((E_gamma^2 - E_GDR^2)^2 + E_gamma^2 * Gamma_GDR^2)
+///
+/// Returned in MeV⁻³ (see [`GSF_E1_CONST`]).
 #[derive(Debug, Clone)]
 pub struct StandardLorentzian {
     /// GDR peak energy (MeV).
@@ -49,7 +59,7 @@ impl StandardLorentzian {
         if denom == 0.0 {
             return 0.0;
         }
-        sigma * gamma * e_gamma * gamma / denom / (3.0 * PI * PI)
+        GSF_E1_CONST * sigma * gamma * e_gamma * gamma / denom
     }
 }
 
@@ -120,7 +130,7 @@ impl GammaStrength for EnhancedGeneralizedLorentzian {
         }
         match multipole {
             Multipole::E1 => {
-                let kappa = 1.0 / (3.0 * PI * PI);
+                let kappa = GSF_E1_CONST;
                 let gamma_k = self.gamma_k(e_gamma);
                 let gamma_k0 = self.gamma_k(0.0);
                 let e02 = self.e_gdr * self.e_gdr;
@@ -254,6 +264,28 @@ mod tests {
     }
 
     #[test]
+    fn slo_e1_absolute_magnitude() {
+        // f_E1 = 8.674e-8 * sigma * Gamma^2 * E / ((E^2 - E0^2)^2 + E^2 Gamma^2) [MeV^-3].
+        // Fe-56 GDR at E_gamma = 7 MeV: ~3.5e-8 MeV^-3 (RIPL-3 order of magnitude 1e-8).
+        let slo = StandardLorentzian {
+            e_gdr: 16.36,
+            gamma_gdr: 4.58,
+            sigma_gdr: 136.0,
+            m1_params: None,
+        };
+        let f = slo.strength(&fe56(), 7.0, Multipole::E1);
+        let (e, e0, g, s) = (7.0_f64, 16.36_f64, 4.58_f64, 136.0_f64);
+        let expected = 8.674e-8 * s * g * g * e / ((e * e - e0 * e0).powi(2) + e * e * g * g);
+        assert!(
+            (f / expected - 1.0).abs() < 1e-4,
+            "f = {f:e}, expected {expected:e}"
+        );
+        assert!(f > 1e-8 && f < 1e-7, "f_E1(7 MeV) = {f:e} MeV^-3");
+        let direct = 0.1 / (3.0 * PI * PI * nucrust_core::units::HBAR_C.powi(2));
+        assert!((GSF_E1_CONST / direct - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
     fn eglo_positive() {
         let eglo = EnhancedGeneralizedLorentzian {
             e_gdr: 16.36,
@@ -297,7 +329,7 @@ mod tests {
                 let e02 = e_gdr * e_gdr;
                 let g2 = gamma_gdr * gamma_gdr;
                 let denom = (e2 - e02) * (e2 - e02) + e2 * g2;
-                sigma_gdr * gamma_gdr * e * gamma_gdr / denom / (3.0 * PI * PI)
+                GSF_E1_CONST * sigma_gdr * gamma_gdr * e * gamma_gdr / denom
             })
             .collect();
 

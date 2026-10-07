@@ -42,6 +42,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   their signs.
 - Criterion benchmark target `cargo bench -p nucrust-special` (per-regime
   `coulomb_wave` timings and a SIMD batch).
+- Genuine TALYS-2.25 golden reference data for Fe-56(n,x) and U-238(n,x)
+  under `tests/reference_data/talys/`: capture, elastic, non-elastic, total
+  and reaction cross sections, and spin-averaged / j-split neutron
+  transmission coefficients, together with the raw TALYS outputs and inputs
+  and `scripts/extract_talys_golden.py`, which regenerates the tables
+  byte-identically from the raw outputs
 
 ## [0.1.0] - 2026-10-07
 
