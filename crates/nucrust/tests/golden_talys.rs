@@ -54,16 +54,22 @@
 //! equals the T_0 ratio to ~2e-4, confirming the same CM `pi/k^2` convention).
 //!
 //! ACC-03b (capture), model differences: TALYS uses ldmodel 1 (CT + Fermi gas fitted to
-//! discrete levels and D0), SMLO E1 (strength 9) + M1 with upbend, Moldauer width
-//! fluctuations below 11.2 MeV, all particle channels (p, alpha, (n,2n), ...),
-//! pre-equilibrium and the multi-step cascade (`sigma_res` = A+1 production). nucrust here:
-//! CT level density tuned to D0(57Fe) (as in `e2e_pipeline.rs`), SLO E1 with constant
-//! M1/E2, no WFC (`wfc_model` is not applied by `hauser_feshbach`), gamma + neutron
-//! (compound elastic + inelastic to the first 11 Fe-56 levels + CT continuum) only.
-//! Below E_cm = 10 keV the neutron exit channel returns 0 because
-//! `exit_particle_continuum_transmission` drops emission energies < `MIN_EMISSION_ENERGY`
-//! (10 keV), which removes compound elastic and makes sigma_gamma = sigma_CN (a factor
-//! ~500 too large); the regression test therefore also ratchets E_cm >= 10 keV separately.
+//! discrete levels and D0), SMLO E1 (strength 9) + M1 (strengthM1 3) with upbend, Moldauer
+//! width fluctuations below 11.2 MeV, all particle channels (p, alpha, (n,2n), ...),
+//! pre-equilibrium above 4.4 MeV and the multi-step cascade (`sigma_res` = A+1 production).
+//! The run has `outdensity n` / `outgamma n`, so the fitted NLD and PSF parameters are not
+//! in `raw/output.gz` and cannot be copied. nucrust here: CT level density tuned to
+//! D0(57Fe) (as in `e2e_pipeline.rs`), SLO E1 with constant M1/E2, Moldauer WFC (all
+//! energies), gamma + neutron (compound elastic + inelastic to the first 11 Fe-56 levels +
+//! CT continuum) only.
+//!
+//! Measured: nucrust is low by a factor 3-5 from 1 keV to 1 MeV (rel. err 0.58-0.78), from
+//! the gamma width (GSF; an off-line test with the 57Fe CT density extended below E0
+//! raised sigma_gamma by only ~25% at 1 keV), and high above ~4 MeV, up to 11x at 19.6 MeV,
+//! where the missing (n,p)/(n,alpha)/(n,2n)/pre-equilibrium competition leaves too much
+//! flux in the gamma channel. Moldauer WFC lowers sigma_gamma by 10-30% at keV energies.
+//! (Before the low-energy emission fix, compound elastic vanished below E_cm = 10 keV and
+//! sigma_gamma = sigma_CN, a factor ~500 too large.)
 
 use std::path::{Path, PathBuf};
 
@@ -528,13 +534,13 @@ fn acc03b_points() -> Vec<Point> {
 /// Measured (117 points): max 4.214e-2 at E_cm = 7.98 MeV; median 3.0e-2 (3.6% at 1 keV,
 /// following T_0). Bound = 4.3e-2 x 1.1.
 const ACC03A_RATCHET: f64 = 4.73e-2;
-/// Measured (117 points): max 4.949e2 at E_cm = 9.82 keV (compound elastic lost below
-/// 10 keV, see module docs); median 7.0e-1. Bound = 5.0e2 x 1.1.
-const ACC03B_RATCHET: f64 = 550.0;
-/// Measured for E_cm >= 10 keV (90 points): max 1.085e1 at E_cm = 19.6 MeV (missing
-/// (n,p)/(n,2n)/pre-equilibrium competition); 0.6-0.7 (nucrust low) from 10 keV to 2 MeV.
-/// Bound = 11 x 1.1.
-const ACC03B_ABOVE_10KEV_RATCHET: f64 = 12.1;
+/// Measured (117 points): max 1.085e1 at E_cm = 19.6 MeV (missing (n,p)/(n,2n)/
+/// pre-equilibrium competition); median 7.1e-1. Bound = 11 x 1.1.
+const ACC03B_RATCHET: f64 = 12.1;
+/// Measured for E_cm < 2 MeV (88 points; below the (n,p) threshold, (n,alpha) Coulomb
+/// suppressed, no pre-equilibrium): max 7.837e-1 at E_cm = 0.98 keV (gamma width, see
+/// module docs). Bound = 0.79 x 1.1.
+const ACC03B_BELOW_2MEV_RATCHET: f64 = 0.869;
 
 #[test]
 fn acc03a_fe56_reaction_xs_regression() {
@@ -563,18 +569,18 @@ fn acc03b_fe56_capture_xs_regression() {
     let pts = acc03b_points();
     let s = summarize("ACC-03b Fe-56 sigma(n,g) vs TALYS sigma_res", &pts, true);
     assert_within("ACC-03b regression", &s, ACC03B_RATCHET);
-    let above: Vec<Point> = pts.into_iter().filter(|p| p.e >= 0.01).collect();
-    let s = summarize("ACC-03b Fe-56 sigma(n,g), E_cm >= 10 keV", &above, false);
+    let below: Vec<Point> = pts.into_iter().filter(|p| p.e < 2.0).collect();
+    let s = summarize("ACC-03b Fe-56 sigma(n,g), E_cm < 2 MeV", &below, false);
     assert_within(
-        "ACC-03b regression (E_cm >= 10 keV)",
+        "ACC-03b regression (E_cm < 2 MeV)",
         &s,
-        ACC03B_ABOVE_10KEV_RATCHET,
+        ACC03B_BELOW_2MEV_RATCHET,
     );
 }
 
 #[test]
-#[ignore = "ACC-03b not yet met: measured max rel err 4.9e2 at E_cm=9.8 keV (median 7.0e-1; 1.1e1 at 19.6 MeV); \
-            missing compound elastic below 10 keV, NLD/GSF/WFC/competing-channel model differences, see module docs"]
+#[ignore = "ACC-03b not yet met: measured max rel err 1.1e1 at E_cm=19.6 MeV (median 7.1e-1; 0.78 at 1 keV); \
+            missing competing channels and pre-equilibrium, NLD/GSF model differences, see module docs"]
 fn acc03b_fe56_capture_xs_srs_target() {
     let s = summarize(
         "ACC-03b Fe-56 sigma(n,g) vs TALYS sigma_res",

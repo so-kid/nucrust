@@ -82,6 +82,7 @@ impl ComputeBackend for CpuBackend {
 
         let hf_config = hf::HfConfig {
             two_j_max: config.j_max * 2,
+            wfc_model: config.wfc_model,
             exit_channels: vec![Projectile::Gamma],
             ..hf::HfConfig::default()
         };
