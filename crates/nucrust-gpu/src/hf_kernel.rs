@@ -6,29 +6,14 @@ use std::sync::Arc;
 
 const HF_KERNEL_SRC: &str = include_str!("../../../kernels/hf_summation.cu");
 
-/// Parameters for GPU HF summation.
-pub struct GpuHfParams {
-    /// Maximum 2J value for spin summation.
-    pub two_j_max: i32,
-    /// Reaction Q-value (MeV).
-    pub q_value: f64,
-    /// Level density parameter a (MeV^{-1}).
-    pub nld_a: f64,
-    /// Nuclear temperature T (MeV).
-    pub nld_t: f64,
-    /// GDR centroid energy (MeV).
-    pub gsf_e_gdr: f64,
-    /// GDR width (MeV).
-    pub gsf_gamma_gdr: f64,
-    /// GDR peak cross section (mb).
-    pub gsf_sigma_gdr: f64,
-    /// hbar^2 / (2 * mu) in MeV*fm^2.
-    pub hbar2_over_2mu: f64,
-}
+pub use crate::hf_reference::GpuHfParams;
 
 /// Run HF summation on GPU.
 ///
 /// Each energy point is one CUDA thread. The J-pi loop runs within each thread.
+/// `sigma_total` holds the compound formation cross section and
+/// `sigma_reaction` the capture cross section (mb). The arithmetic is mirrored
+/// by [`crate::hf_reference::hf_summation_host`].
 pub fn gpu_hf_summation(
     ctx: &Arc<CudaContext>,
     stream: &Arc<CudaStream>,
@@ -79,9 +64,14 @@ pub fn gpu_hf_summation(
             .arg(&(n_e as i32))
             .arg(&n_l)
             .arg(&params.two_j_max)
+            .arg(&params.proj_two_s)
+            .arg(&params.target_two_i)
+            .arg(&params.target_parity)
             .arg(&params.q_value)
+            .arg(&params.compound_a)
             .arg(&params.nld_a)
             .arg(&params.nld_t)
+            .arg(&params.nld_e0)
             .arg(&params.gsf_e_gdr)
             .arg(&params.gsf_gamma_gdr)
             .arg(&params.gsf_sigma_gdr)
@@ -161,9 +151,14 @@ mod tests {
 
         let params = GpuHfParams {
             two_j_max: 10,
+            proj_two_s: 1,
+            target_two_i: 0,
+            target_parity: 1,
             q_value: 7.646,
+            compound_a: 57.0,
             nld_a: 6.21,
             nld_t: 0.88,
+            nld_e0: -1.16,
             gsf_e_gdr: 16.36,
             gsf_gamma_gdr: 4.58,
             gsf_sigma_gdr: 136.0,
@@ -184,5 +179,18 @@ mod tests {
         // At least some cross sections should be non-zero
         let max_sigma = xs.sigma_total.iter().cloned().fold(0.0_f64, f64::max);
         assert!(max_sigma > 0.0, "all sigma_cn are zero");
+
+        // The device result must agree with the host replica of the kernel
+        // (FP64 throughout; differences only from libm vs. CUDA exp/pow).
+        let (host_cn, host_gamma) = crate::hf_reference::hf_summation_host(&tc, &params);
+        for e_idx in 0..n_e {
+            for (dev, host) in [
+                (xs.sigma_total[e_idx], host_cn[e_idx]),
+                (xs.sigma_reaction[e_idx], host_gamma[e_idx]),
+            ] {
+                let rel = (dev - host).abs() / host.abs().max(1e-300);
+                assert!(rel < 1e-10, "E[{e_idx}]: GPU {dev} vs host {host}");
+            }
+        }
     }
 }

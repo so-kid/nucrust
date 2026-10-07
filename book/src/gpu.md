@@ -39,9 +39,16 @@ Four CUDA kernels are provided:
 | Kernel | Function | Parallelization |
 |--------|----------|----------------|
 | `numerov.cu` | Batch Numerov integration | 1 thread per (energy, partial wave) |
-| `hf_summation.cu` | HF Jπ-loop summation | 1 thread per Jπ state |
+| `hf_summation.cu` | HF Jπ-loop summation | 1 thread per energy (Jπ loop in-thread) |
 | `rmatrix_solve.cu` | R-matrix batched solve | In-thread Gauss-Jordan |
 | `macs_integral.cu` | MACS Gauss-Laguerre | 1 thread per temperature |
+
+`hf_summation.cu` follows the CPU Hauser-Feshbach path (`nucrust-hf`) for
+capture with compound-elastic competition: Jπ is formed by coupling the particle
+spin j (not l) with the target spin under (-1)^l parity selection, and the gamma
+transmission integrates E1/M1/E2 strengths of the compound nucleus. The kernel
+supports the constant-temperature level density and the Standard Lorentzian
+GSF; `GpuBackend::hf_summation` returns an error for other models.
 
 ## Mixed Precision
 

@@ -88,9 +88,14 @@ mod tests {
 
         let hf_params = GpuHfParams {
             two_j_max: 20,
+            proj_two_s: 1,
+            target_two_i: 0,
+            target_parity: 1,
             q_value: 7.646,
+            compound_a: 57.0,
             nld_a: 6.21,
             nld_t: 0.88,
+            nld_e0: -1.16,
             gsf_e_gdr: 16.36,
             gsf_gamma_gdr: 4.58,
             gsf_sigma_gdr: 136.0,
@@ -204,9 +209,14 @@ mod tests {
 
         let hf_params = GpuHfParams {
             two_j_max: 20,
+            proj_two_s: 1,
+            target_two_i: 0,
+            target_parity: 1,
             q_value: 7.646,
+            compound_a: 57.0,
             nld_a: 6.21,
             nld_t: 0.88,
+            nld_e0: -1.16,
             gsf_e_gdr: 16.36,
             gsf_gamma_gdr: 4.58,
             gsf_sigma_gdr: 136.0,
@@ -269,9 +279,14 @@ mod tests {
 
         let hf_params = GpuHfParams {
             two_j_max: 40,
-            q_value: 4.806,  // Sn of U-239
+            proj_two_s: 1,
+            target_two_i: 0,
+            target_parity: 1,
+            q_value: 4.806, // Sn of U-239
+            compound_a: 239.0,
             nld_a: 25.0,     // higher for actinides
             nld_t: 0.40,     // lower temperature
+            nld_e0: -0.8,    // rough CT shift for U-239,
             gsf_e_gdr: 11.0, // lower GDR energy for heavy nuclei
             gsf_gamma_gdr: 4.0,
             gsf_sigma_gdr: 350.0, // larger peak for A~238
@@ -320,9 +335,14 @@ mod tests {
             },
             hf: GpuHfParams {
                 two_j_max: 20,
+                proj_two_s: 1,
+                target_two_i: 0,
+                target_parity: 1,
                 q_value: 7.646,
+                compound_a: 57.0,
                 nld_a: 6.21,
                 nld_t: 0.88,
+                nld_e0: -1.16,
                 gsf_e_gdr: 16.36,
                 gsf_gamma_gdr: 4.58,
                 gsf_sigma_gdr: 136.0,

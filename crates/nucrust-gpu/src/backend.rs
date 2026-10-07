@@ -184,10 +184,17 @@ impl ComputeBackend for GpuBackend {
         gsf_params: &GsfModelParams,
         config: &HfConfig,
     ) -> Result<CrossSection, CoreError> {
-        let (nld_t, nld_a) = match nld_params {
-            NldModelParams::ConstantTemperature { t, e0: _ } => (*t, 6.0),
-            NldModelParams::Bsfg { a, .. } => (0.88, *a),
-            _ => (0.88, 6.0),
+        // The kernel implements the constant-temperature NLD and the SLO GSF only;
+        // other models are rejected rather than silently replaced.
+        let (nld_t, nld_e0) = match nld_params {
+            NldModelParams::ConstantTemperature { t, e0 } => (*t, *e0),
+            _ => {
+                return Err(CoreError::InvalidParameter {
+                    name: "nld_params",
+                    value: 0.0,
+                    reason: "GPU HF kernel supports only the constant-temperature NLD",
+                })
+            }
         };
         let (gsf_e, gsf_g, gsf_s) = match gsf_params {
             GsfModelParams::Slo {
@@ -195,18 +202,33 @@ impl ComputeBackend for GpuBackend {
                 gamma_gdr,
                 sigma_gdr,
             } => (*e_gdr, *gamma_gdr, *sigma_gdr),
-            _ => (16.0, 4.5, 130.0),
+            _ => {
+                return Err(CoreError::InvalidParameter {
+                    name: "gsf_params",
+                    value: 0.0,
+                    reason: "GPU HF kernel supports only the SLO gamma strength",
+                })
+            }
         };
 
-        let mu = 0.97; // approximate
+        // Same entrance channel as the CPU backend: n + Fe-56 (0+), Q = 0,
+        // CT spin-cutoff parameter a = 6.0.
+        let projectile = nucrust_core::Projectile::Neutron;
+        let target_a = 56.0;
+        let mu = nucrust_core::units::reduced_mass(projectile.mass_amu(), target_a);
         let hbar2_2mu =
             nucrust_core::units::HBAR_C.powi(2) / (2.0 * mu * nucrust_core::units::AMU_MEV);
 
         let hf_params = crate::hf_kernel::GpuHfParams {
             two_j_max: config.j_max * 2,
+            proj_two_s: projectile.two_spin(),
+            target_two_i: 0,
+            target_parity: 1,
             q_value: 0.0,
-            nld_a,
+            compound_a: target_a + 1.0,
+            nld_a: 6.0,
             nld_t,
+            nld_e0,
             gsf_e_gdr: gsf_e,
             gsf_gamma_gdr: gsf_g,
             gsf_sigma_gdr: gsf_s,

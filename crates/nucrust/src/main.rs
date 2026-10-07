@@ -116,7 +116,8 @@ fn run_calc(
                 let path = output_dir.join("transmission.tsv");
                 let mut lines = vec!["# E(MeV)\tT_l=0".to_string()];
                 for (i, &e) in energies.as_slice().iter().enumerate() {
-                    let t0 = if tc.data.len() > i { tc.data[i] } else { 0.0 };
+                    // s-wave (l = 0, j = 1/2) lives in j-slot 1; slot 0 is unused.
+                    let t0 = tc.get(0, 1, i);
                     lines.push(format!("{:.6}\t{:.6e}", e, t0));
                 }
                 fs::write(&path, lines.join("\n"))?;
