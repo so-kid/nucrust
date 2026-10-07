@@ -1,0 +1,16 @@
+# TALYS input for the nucrust golden reference data: n + U-238
+# Run with TALYS-2.25 (git 2c5d15f68f): talys < talys_input.txt > output  (energies_golden.txt in the working directory)
+# Non-default keywords (everything else is a TALYS default):
+#   energy        incident LAB neutron energies from file (117 points, 1 keV - 20 MeV)
+#   outinverse    y : write the neutron transmission-coefficient file transmission_n.out (default follows outbasic = n)
+#   outtransenergy y : group transmission coefficients per energy (explicit; documented default is y)
+#   transpower    20 : do not drop small T_lj in the Hauser-Feshbach sum (default 5 drops T_lj < 1e-5/(2l+1) * T_0)
+#   transeps      1.e-14 : likewise remove the absolute cutoff on T (default 1e-8)
+projectile n
+element U
+mass 238
+energy energies_golden.txt
+outinverse y
+outtransenergy y
+transpower 20
+transeps 1.e-14
