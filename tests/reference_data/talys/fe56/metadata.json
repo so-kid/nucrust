@@ -1,0 +1,49 @@
+{
+  "target": {
+    "element": "Fe",
+    "Z": 26,
+    "A": 56
+  },
+  "projectile": "n",
+  "talys": {
+    "version": "TALYS-2.25",
+    "version_date": "October 4, 2026",
+    "source_git_commit": "2c5d15f68f",
+    "run_date": "2026-10-08"
+  },
+  "input_file": "talys_input.txt",
+  "energy_grid_file": "../energies_golden.txt",
+  "energy_frame": "laboratory (TALYS 'energy' keyword); E_cm = E_lab * M/(M+m_n)",
+  "cross_sections": {
+    "n_energies": 117,
+    "E_lab_min_MeV": 0.001,
+    "E_lab_max_MeV": 20.0,
+    "units": "mb",
+    "file": "fe56_cross_sections.dat"
+  },
+  "transmission": {
+    "n_transmission_energies": 68,
+    "l_max_listed": 20,
+    "transmission_E_lab_over_E_grid": 1.018033,
+    "transmission_E_lab_first_MeV": 0.001018033,
+    "transmission_E_lab_last_MeV": 20.36066,
+    "files": [
+      "fe56_transmission.dat",
+      "fe56_transmission_jsplit.dat"
+    ]
+  },
+  "non_default_keywords": {
+    "outinverse": "y",
+    "outtransenergy": "y",
+    "transpower": 20,
+    "transeps": "1.e-14"
+  },
+  "raw_files": [
+    "raw/binary.tot",
+    "raw/rp026057.tot",
+    "raw/all.tot",
+    "raw/transmission_n.out",
+    "raw/output.gz"
+  ],
+  "generator": "scripts/extract_talys_golden.py"
+}
