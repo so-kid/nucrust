@@ -6,7 +6,7 @@ It implements the Hauser-Feshbach statistical model and R-matrix theory for comp
 
 ## Key Features
 
-- **Hauser-Feshbach statistical model** with width fluctuation corrections (Moldauer, GOE)
+- **Hauser-Feshbach statistical model** with width fluctuation corrections (Moldauer; GOE experimental)
 - **R-matrix theory** with Lane-Thomas and Brune parameterizations
 - **GPU acceleration** via CUDA for batch calculations (50-500x speedup over Fortran codes)
 - **Multiple physics models**: 5 nuclear level density models, 3 gamma-ray strength function models, 4 optical model potentials
