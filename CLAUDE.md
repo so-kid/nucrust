@@ -119,7 +119,7 @@ nucrust/                    ← ワークスペースルート
    （`tests/reference_data/talys/`）と比較。現状は回帰ラチェットのみ通過、10⁻⁶ 受け入れテストは `#[ignore]`（未達, task.md T-2A.13 / T-2B.14）
 
 ### 未導入（計画のみ）
-- `criterion` 回帰ベンチマーク（dev-dependency は設定済みだがベンチターゲット未作成）
+- `criterion` 回帰ベンチマーク（`nucrust-special` の `benches/coulomb.rs` のみ作成済み。他クレートはベンチターゲット未作成）
 - `cargo-fuzz` ファズテスト
 - AZURE2 との比較検証（ACC-04）。TALYS 比較（ACC-02/03）はテスト実装済みだが 10⁻⁶ 未達
 
