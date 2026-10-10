@@ -48,6 +48,27 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   transmission coefficients, together with the raw TALYS outputs and inputs
   and `scripts/extract_talys_golden.py`, which regenerates the tables
   byte-identically from the raw outputs
+- `KdParameters` and `KoningDelarocheLocal`: Koning-Delaroche potential with an
+  explicit (e.g. TALYS local) parameter set; `KdParameters::global` gives the
+  global set
+- Opt-in ECIS/TALYS conventions for the spherical Numerov solver:
+  `NumerovConfig::kinematics` (`Kinematics::Relativistic`),
+  `NumerovConfig::omp_energy` (`OmpEnergy::Laboratory`: depths at E_lab) and
+  `NumerovConfig::target_mass_amu` (exact target mass instead of A)
+
+### Fixed
+- Koning-Delaroche (and `CustomOmp`) spin-orbit term: Thomas form
+  `-(V_so/a_so) l.s g(r)/r`, attractive for j = l + 1/2 (was `+V_so l.s g/r`:
+  wrong sign and missing 1/a_so, which swapped T(l-1/2) and T(l+1/2))
+- Optical-model matching radius now lies past the Woods-Saxon tail
+  (`R + 33 a`, ~27 fm for Fe-56 instead of 7.7 fm); high-l T_lj were up to
+  ~100% low
+- Numerov S-matrix extraction uses two-point matching to Coulomb functions
+  (was an O(h) one-sided log-derivative, ~1.5% on T_0) and an O(r^2)-corrected
+  start, restoring fourth-order convergence in the step size
+- `CustomOmp` imaginary terms had the emissive sign (|S| > 1, T clamped to 0)
+- Koning-Delaroche proton Coulomb correction of the real depth was missing the
+  factor v1 (KD Eq. 7)
 
 ## [0.1.0] - 2026-10-07
 

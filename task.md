@@ -138,8 +138,9 @@
 
 - [ ] **T-2A.13** TALYS 透過係数との比較（ACC-02: 相対誤差 < 10⁻⁶, ゴールデンファイル `tests/reference_data/talys/{fe56,u238}/*_transmission_jsplit.dat`）
   - テスト実装済み: `crates/nucrust/tests/golden_talys.rs`（回帰ラチェット + `#[ignore]` の 10⁻⁶ 受け入れテスト）。**未達**。
-  - 実測（T_TALYS > 10⁻⁸ の全 (E_cm, l, j)）: Fe-56 最大 1.34（E_cm=4.5 MeV, l=4 j=9/2）/ 中央値 0.35 / T_0 最大 3.6%; U-238 最大 5.7（0.9 MeV, l=7 j=15/2）/ 中央値 0.42 / T_0 約 25% 低い。
-  - 主因: KD スピン軌道項の符号反転と強度（1/a_so 因子）、整合半径 7.7 fm による裾切れ、TALYS 側の相対論的運動学、TALYS のローカル OMP（`localomp y`）、Numerov 対数微分の O(h) 誤差。
+  - 修正済み: KD スピン軌道項（Thomas 形 −(V_so/a_so)·l·s·g/r に）、整合半径（Woods-Saxon の裾 R+33a まで, Fe-56 で約 27 fm）、Numerov の整合（O(h) 対数微分 → O(h⁴) 2 点整合 + 原点近傍の r² 補正）。
+  - 実測（T_TALYS > 10⁻⁸ の全 (E_cm, l, j)）、既定設定（グローバル KD・非相対論）: Fe-56 最大 0.137（1 keV, l=2 j=5/2）/ 中央値 0.021 / T_0 最大 2.5%; U-238 最大 1.13 / 中央値 0.26（修正前: Fe-56 最大 1.34, U-238 最大 5.7）。
+  - ECIS 互換オプション（`KoningDelarocheLocal` に TALYS ローカル KD、`Kinematics::Relativistic`、`OmpEnergy::Laboratory`、TALYS 標的質量）: Fe-56 最大 6.7e-3 / 中央値 3.5e-3（1 keV から T_0 に約 −0.5% の未解明オフセット）; U-238 最大 1.35（TALYS は U-238 にこの球形ローカル KD を使っていない模様, 要調査）。
 - [x] **T-2A.14** proptest: $T_{lj} \in [0, 1]$, 有限性、ランダム (Z,A,E) で検証
 
 ### 2B. nucrust-hf（§7）
@@ -173,8 +174,8 @@
 
 - [ ] **T-2B.14** ⁵⁶Fe(n,γ) HF 断面積の TALYS 比較（ACC-03: 相対誤差 < 10⁻⁶, ゴールデンファイル `tests/reference_data/talys/fe56/fe56_cross_sections.dat`）
   - テスト実装済み: `crates/nucrust/tests/golden_talys.rs`（回帰ラチェット + `#[ignore]` の 10⁻⁶ 受け入れテスト）。**未達**。
-  - σ_R（vs `sigma_reac`）: 最大 4.2%（E_cm=7.98 MeV）/ 中央値 3.0%（T_lj 誤差がそのまま伝播）。
-  - σ(n,γ)（vs `sigma_res`）: 最大 495 倍（E_cm<10 keV: 中性子出口チャネルが `MIN_EMISSION_ENERGY` で複合弾性を落とし σ_γ=σ_CN になる）、10 keV 以上で 0.6〜0.7（低め）〜最大 10.9（19.6 MeV, 競合チャネル欠如）。NLD/GSF/WFC/競合チャネルのモデル差あり。
+  - σ_R（vs `sigma_reac`）: 最大 2.5%（E_cm=0.88 MeV）/ 中央値 1.7%（既定設定の T_lj 誤差がそのまま伝播。T-2A.13 の修正前は最大 4.2%）。
+  - σ(n,γ)（vs `sigma_res`）: 最大 501 倍（E_cm<10 keV: 中性子出口チャネルが `MIN_EMISSION_ENERGY` で複合弾性を落とし σ_γ=σ_CN になる）、10 keV 以上で 0.6〜0.7（低め）〜最大 10.9（19.6 MeV, 競合チャネル欠如）。NLD/GSF/WFC/競合チャネルのモデル差あり。
 - [x] **T-2B.15** proptest: 断面積 ≥ 0、ランダムエネルギーで検証
 
 ### 2C. nucrust-rmatrix（§8）
