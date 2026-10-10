@@ -34,7 +34,11 @@ fn spin_distribution(spin: f64, sigma_sq: f64) -> f64 {
 
 /// Constant Temperature (CT) level density model.
 ///
-/// rho(U) = (1/T) * exp((U - E0) / T)
+/// rho(E) = (1/T) * exp((E - E0) / T),  valid for all E >= 0.
+///
+/// E0 is only an energy shift (it is often positive, e.g. ~2 MeV for odd-A
+/// nuclei), not a threshold: the density is finite and non-zero for
+/// 0 <= E < E0 as well. It vanishes only below the ground state (E < 0).
 #[derive(Debug, Clone)]
 pub struct ConstantTemperature {
     /// Nuclear temperature T (MeV).
@@ -47,22 +51,20 @@ pub struct ConstantTemperature {
 
 impl LevelDensity for ConstantTemperature {
     fn rho(&self, nuclide: &Nuclide, excitation: f64, spin: f64, _parity: Parity) -> f64 {
-        let u = excitation - self.e0;
-        if u < 0.0 {
+        let rho_tot = self.rho_total(nuclide, excitation);
+        if rho_tot <= 0.0 {
             return 0.0;
         }
-        let rho_tot = (1.0 / self.temperature) * (u / self.temperature).exp();
         let sigma_sq = spin_cutoff_sq(self.a, excitation, nuclide.a() as f64);
 
         PARITY_FACTOR * rho_tot * spin_distribution(spin, sigma_sq)
     }
 
     fn rho_total(&self, _nuclide: &Nuclide, excitation: f64) -> f64 {
-        let u = excitation - self.e0;
-        if u < 0.0 {
+        if excitation < 0.0 {
             return 0.0;
         }
-        (1.0 / self.temperature) * (u / self.temperature).exp()
+        (1.0 / self.temperature) * ((excitation - self.e0) / self.temperature).exp()
     }
 
     fn name(&self) -> &str {
@@ -394,6 +396,68 @@ mod tests {
         let rho1 = ct.rho_total(&nuclide, 3.0);
         let rho2 = ct.rho_total(&nuclide, 5.0);
         assert!(rho2 > rho1);
+    }
+
+    /// E0 is a shift, not a threshold: CT must stay valid for 0 <= E < E0.
+    #[test]
+    fn ct_valid_below_positive_e0() {
+        let ct = ConstantTemperature {
+            temperature: 0.88,
+            e0: 1.94,
+            a: 6.21,
+        };
+        let nuclide = fe56();
+        for &e in &[0.0_f64, 0.5, 1.0, 1.93] {
+            let expected = (1.0 / 0.88) * ((e - 1.94) / 0.88).exp();
+            let rho = ct.rho_total(&nuclide, e);
+            assert!(
+                (rho - expected).abs() <= 1e-14 * expected,
+                "rho_total({e}) = {rho}, expected {expected}"
+            );
+            assert!(ct.rho(&nuclide, e, 1.0, Parity::Positive) > 0.0);
+        }
+        // Continuous across E0 (no step at the shift energy).
+        let below = ct.rho_total(&nuclide, 1.94 - 1e-9);
+        let above = ct.rho_total(&nuclide, 1.94 + 1e-9);
+        assert!((above - below).abs() < 1e-8 * above);
+        assert!((ct.rho_total(&nuclide, 1.94) - 1.0 / 0.88).abs() < 1e-14);
+    }
+
+    #[test]
+    fn ct_zero_below_ground_state() {
+        let ct = ConstantTemperature {
+            temperature: 0.88,
+            e0: -1.16,
+            a: 6.21,
+        };
+        let nuclide = fe56();
+        assert_eq!(ct.rho_total(&nuclide, -0.1), 0.0);
+        assert_eq!(ct.rho(&nuclide, -0.1, 0.0, Parity::Positive), 0.0);
+        assert!(ct.rho_total(&nuclide, 0.0) > 0.0);
+    }
+
+    /// The CT part of Gilbert-Cameron inherits the 0 <= E < E0 validity.
+    #[test]
+    fn gc_ct_part_valid_below_positive_e0() {
+        let gc = GilbertCameron {
+            ct: ConstantTemperature {
+                temperature: 0.88,
+                e0: 1.94,
+                a: 6.21,
+            },
+            bsfg: BackShiftedFermiGas {
+                a: 6.21,
+                delta: 0.5,
+                sigma: None,
+            },
+            e_match: 5.0,
+        };
+        let nuclide = fe56();
+        for &e in &[0.0, 1.0, 1.93] {
+            assert!(gc.rho_total(&nuclide, e) > 0.0, "GC rho_total({e}) = 0");
+            assert!(gc.rho(&nuclide, e, 1.0, Parity::Negative) > 0.0);
+        }
+        assert_eq!(gc.rho_total(&nuclide, -0.1), 0.0);
     }
 
     #[test]
