@@ -70,6 +70,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Koning-Delaroche proton Coulomb correction of the real depth was missing the
   factor v1 (KD Eq. 7)
 
+### Fixed
+- `ConstantTemperature` level density (and the CT part of `GilbertCameron`)
+  returned 0 for excitation energies below the shift `E0`. The CT formula
+  ρ(E) = (1/T)·exp((E−E0)/T) now holds for all E ≥ 0 and is zero only below
+  the ground state. With a positive E0 (e.g. 1.94 MeV for ⁵⁷Fe) this restores
+  the γ final states in 0 ≤ U < E0; Fe-56 σ(n,γ) rises by 20–27 % between
+  10 keV and 1 MeV
+
 ## [0.1.0] - 2026-10-07
 
 ### Added

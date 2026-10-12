@@ -74,6 +74,8 @@
 //! `exit_particle_continuum_transmission` drops emission energies < `MIN_EMISSION_ENERGY`
 //! (10 keV), which removes compound elastic and makes sigma_gamma = sigma_CN (a factor
 //! ~500 too large); the regression test therefore also ratchets E_cm >= 10 keV separately.
+//! The 57Fe CT (E0 = 1.94 MeV) supplies gamma final states over the whole 0..Sn range,
+//! including 0 <= U < E0 (E0 is a shift, not a threshold).
 
 use std::path::{Path, PathBuf};
 
@@ -662,12 +664,12 @@ fn acc03b_points() -> Vec<Point> {
 /// KD, as T_0). Bound = 2.6e-2 x 1.1.
 const ACC03A_RATCHET: f64 = 2.86e-2;
 /// Measured (117 points): max 5.012e2 at E_cm = 9.82 keV (compound elastic lost below
-/// 10 keV, see module docs); median 7.0e-1. 5.1e2 x 1.1 would loosen the earlier bound
+/// 10 keV, see module docs); median 6.3e-1. 5.1e2 x 1.1 would loosen the earlier bound
 /// (measured 4.949e2 before the T_lj fixes), so it stays at 5.0e2 x 1.1.
 const ACC03B_RATCHET: f64 = 550.0;
 /// Measured for E_cm >= 10 keV (90 points): max 1.077e1 at E_cm = 19.6 MeV (missing
-/// (n,p)/(n,2n)/pre-equilibrium competition); median 6.5e-1 (nucrust low from 10 keV to
-/// 2 MeV). Bound = 11 x 1.1.
+/// (n,p)/(n,2n)/pre-equilibrium competition); median 5.9e-1, with nucrust low from
+/// 10 keV to 2 MeV. Bound = 11 x 1.1.
 const ACC03B_ABOVE_10KEV_RATCHET: f64 = 12.1;
 
 #[test]
@@ -707,7 +709,7 @@ fn acc03b_fe56_capture_xs_regression() {
 }
 
 #[test]
-#[ignore = "ACC-03b not yet met: measured max rel err 5.0e2 at E_cm=9.8 keV (median 7.0e-1; 1.1e1 at 19.6 MeV); \
+#[ignore = "ACC-03b not yet met: measured max rel err 5.0e2 at E_cm=9.8 keV (median 6.3e-1; 1.1e1 at 19.6 MeV); \
             missing compound elastic below 10 keV, NLD/GSF/WFC/competing-channel model differences, see module docs"]
 fn acc03b_fe56_capture_xs_srs_target() {
     let s = summarize(
