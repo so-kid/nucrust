@@ -7,10 +7,29 @@ nucrust uses trait-based abstractions for physics models, allowing different imp
 The `OpticalPotential` trait defines the nuclear+Coulomb potential for scattering calculations. Implementations:
 
 - **Koning-Delaroche** — Global OMP for neutrons and protons (A ≥ 24, E ≤ 200 MeV)
+- **Koning-Delaroche (local)** — `KoningDelarocheLocal`: the same functional form with an explicit `KdParameters` set, e.g. the nucleus-specific sets TALYS uses by default (`localomp y`)
 - **McFadden-Satchler** — Alpha-particle OMP
 - **Avrigeanu 2014** — Improved alpha-particle OMP
 
-The optical potential determines transmission coefficients T_lj via Numerov integration of the radial Schrödinger equation.
+The optical potential determines transmission coefficients T_lj via Numerov integration of the radial Schrödinger equation. The spin-orbit term has the Thomas form used by Koning-Delaroche and ECIS (attractive for j = l + 1/2), the solution is matched to Coulomb functions at two radii past the Woods-Saxon tail (about 27 fm for Fe-56), and the integration is fourth order in the step size.
+
+### ECIS/TALYS-compatible kinematics (opt-in)
+
+By default the radial equation is non-relativistic, the potential depths are evaluated at the CM energy, and the reduced mass uses the mass number A. To reproduce TALYS (which runs ECIS), `NumerovConfig` can switch each of these:
+
+```rust,ignore
+use nucrust::nucrust_core::backend::NumerovConfig;
+use nucrust::nucrust_core::{Kinematics, OmpEnergy};
+
+let config = NumerovConfig {
+    kinematics: Kinematics::Relativistic, // relativistic k, reduced total energy
+    omp_energy: OmpEnergy::Laboratory,    // depths at E_lab = E (m + M) / M
+    target_mass_amu: Some(55.934936),     // atomic mass instead of A
+    ..NumerovConfig::default()
+};
+```
+
+These options apply to the spherical Numerov solver (`compute_transmission_coeffs`); the coupled-channel path and the GPU kernel do not use them yet.
 
 ## Nuclear Level Density (NLD)
 
