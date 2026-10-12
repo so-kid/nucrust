@@ -61,22 +61,27 @@ pub fn coulomb_phase_shift(l: u32, eta: f64) -> f64 {
     complex_log_gamma(z).im
 }
 
-/// Gamow factor C_l(eta) via log-gamma.
+/// Gamow factor C_l(eta).
 ///
-/// C_l(eta) = 2^l * exp(-pi*eta/2 + [ln Gamma(1+l+i*eta) + ln Gamma(1+l-i*eta)]/2 - ln Gamma(2l+2))
+/// C_0(eta) = sqrt(2*pi*eta / (exp(2*pi*eta) - 1)) is evaluated in closed form and
+/// C_l = C_{l-1} * sqrt(l^2 + eta^2) / (l*(2l+1)) by upward recurrence (DLMF 33.2.5-6).
+/// Unlike the log-gamma route, this does not lose digits to the cancellation between
+/// -pi*eta/2 and ln|Gamma(1+l+i*eta)| at large eta.
 pub fn gamow_factor(l: u32, eta: f64) -> f64 {
-    let lf = l as f64;
-    let z_plus = Complex64::new(1.0 + lf, eta);
-    let z_minus = Complex64::new(1.0 + lf, -eta);
-
-    let log_gamma_plus = complex_log_gamma(z_plus);
-    let log_gamma_minus = complex_log_gamma(z_minus);
-    let log_gamma_real = complex_log_gamma(Complex64::new(2.0 * lf + 2.0, 0.0)).re;
-
-    let log_c = lf * 2.0_f64.ln() - PI * eta / 2.0 + (log_gamma_plus.re + log_gamma_minus.re) / 2.0
-        - log_gamma_real;
-
-    log_c.exp()
+    let two_pi_eta = 2.0 * PI * eta;
+    let mut c = if eta > 0.0 {
+        // exp(-pi*eta) * sqrt(2*pi*eta / (1 - exp(-2*pi*eta))): no overflow for large eta.
+        (two_pi_eta / -(-two_pi_eta).exp_m1()).sqrt() * (-PI * eta).exp()
+    } else if eta < 0.0 {
+        (two_pi_eta / two_pi_eta.exp_m1()).sqrt()
+    } else {
+        1.0
+    };
+    for k in 1..=l {
+        let kf = k as f64;
+        c *= (kf * kf + eta * eta).sqrt() / (kf * (2.0 * kf + 1.0));
+    }
+    c
 }
 
 #[cfg(test)]
@@ -191,6 +196,20 @@ mod tests {
             c1,
             c1_from_recurrence,
             rel_err
+        );
+    }
+
+    #[test]
+    fn gamow_factor_large_eta() {
+        // C_0(eta) = sqrt(2 pi eta / (exp(2 pi eta) - 1)); for eta = 50 the
+        // log-gamma route lost ~4 digits to cancellation.
+        // mpmath (dps=40): C_0(50) = 1.0709205299981646e-67
+        let c0 = gamow_factor(0, 50.0);
+        let expected = 1.0709205299981646e-67;
+        let rel_err = ((c0 - expected) / expected).abs();
+        assert!(
+            rel_err < 1e-14,
+            "C_0(50): got {c0}, rel_err = {rel_err:.2e}"
         );
     }
 }

@@ -25,16 +25,25 @@ def coulomb_g(l, eta, rho):
     return float(mpmath.coulombg(l, eta, rho))
 
 
+def _derivative(func, l, eta, rho):
+    """Exact derivative X'_l = S_{l+1} X_l - R_{l+1} X_{l+1} (DLMF 33.4.4).
+
+    Evaluated at full working precision, unlike a finite difference.
+    """
+    l1 = mpmath.mpf(l + 1)
+    s = l1 / rho + eta / l1
+    r = mpmath.sqrt(1 + (eta / l1) ** 2)
+    return s * func(l, eta, rho) - r * func(l + 1, eta, rho)
+
+
 def coulomb_fp(l, eta, rho):
-    """Derivative F'_l(eta, rho) via numerical differentiation."""
-    h = mpmath.mpf("1e-10")
-    return float((mpmath.coulombf(l, eta, rho + h) - mpmath.coulombf(l, eta, rho - h)) / (2 * h))
+    """Derivative F'_l(eta, rho)."""
+    return float(_derivative(mpmath.coulombf, l, eta, rho))
 
 
 def coulomb_gp(l, eta, rho):
-    """Derivative G'_l(eta, rho) via numerical differentiation."""
-    h = mpmath.mpf("1e-10")
-    return float((mpmath.coulombg(l, eta, rho + h) - mpmath.coulombg(l, eta, rho - h)) / (2 * h))
+    """Derivative G'_l(eta, rho)."""
+    return float(_derivative(mpmath.coulombg, l, eta, rho))
 
 
 def sigma_l(l, eta):
@@ -165,6 +174,64 @@ def main():
         (0, 5.0, 6.0, "Alpha+C12 1MeV: eta~5"),
     ]
 
+    # === Classically forbidden region, l > 0 and near the turning point ===
+    forbidden = [
+        (1, 10.0, 3.0, "Forbidden l=1: eta=10, rho=3"),
+        (3, 10.0, 3.0, "Forbidden l=3: eta=10, rho=3"),
+        (5, 10.0, 3.0, "Forbidden l=5: eta=10, rho=3"),
+        (10, 10.0, 3.0, "Forbidden l=10: eta=10, rho=3"),
+        (1, 5.0, 2.0, "Forbidden l=1: eta=5, rho=2"),
+        (3, 5.0, 2.0, "Forbidden l=3: eta=5, rho=2"),
+        (6, 5.0, 2.0, "Forbidden l=6: eta=5, rho=2"),
+        (1, 30.0, 10.0, "Forbidden l=1: eta=30, rho=10"),
+        (5, 30.0, 10.0, "Forbidden l=5: eta=30, rho=10"),
+        (10, 30.0, 10.0, "Forbidden l=10: eta=30, rho=10"),
+        (2, 20.0, 5.0, "Forbidden l=2: eta=20, rho=5"),
+        (8, 20.0, 5.0, "Forbidden l=8: eta=20, rho=5"),
+        (3, 50.0, 20.0, "Forbidden l=3: eta=50, rho=20"),
+        (1, 1.0, 1.0, "Shallow forbidden l=1: eta=1, rho=1"),
+        (3, 1.0, 1.0, "Shallow forbidden l=3: eta=1, rho=1"),
+        (0, 10.0, 17.0, "Below turning point: eta=10, rho=17"),
+        (2, 10.0, 17.0, "Below turning point l=2: eta=10, rho=17"),
+        (0, 10.0, 19.0, "Just below turning point: eta=10, rho=19"),
+        (0, 50.0, 85.0, "Below turning point: eta=50, rho=85"),
+        (0, 3.0, 5.5, "Below turning point: eta=3, rho=5.5"),
+        (4, 3.0, 5.5, "Below turning point l=4: eta=3, rho=5.5"),
+        (0, 5.0, 9.5, "Just below turning point: eta=5, rho=9.5"),
+        (0, 5.0, 10.5, "Just above turning point: eta=5, rho=10.5"),
+        # Large eta between the series and Steed regimes (rho-shift path)
+        (0, 100.0, 130.0, "Large eta below turning point: eta=100, rho=130"),
+        (0, 100.0, 150.0, "Large eta below turning point: eta=100, rho=150"),
+        (0, 100.0, 170.0, "Large eta below turning point: eta=100, rho=170"),
+        (2, 100.0, 170.0, "Large eta below turning point l=2: eta=100, rho=170"),
+        (0, 100.0, 185.0, "Large eta below turning point: eta=100, rho=185"),
+        (0, 200.0, 300.0, "Very large eta: eta=200, rho=300"),
+        (0, 200.0, 380.0, "Very large eta near turning point: eta=200, rho=380"),
+    ]
+
+    # === Small rho (power-series regime) ===
+    small_rho = [
+        (0, 0.0, 0.01, "Small rho=0.01, eta=0"),
+        (0, 1.0, 0.01, "Small rho=0.01, eta=1"),
+        (0, 10.0, 0.01, "Small rho=0.01, eta=10"),
+        (2, 0.5, 0.01, "Small rho=0.01, eta=0.5, l=2"),
+        (0, 5.0, 0.1, "Small rho=0.1, eta=5"),
+        (5, 0.0, 0.1, "Small rho=0.1, eta=0, l=5"),
+        (1, 2.0, 0.1, "Small rho=0.1, eta=2, l=1"),
+        (0, 0.0, 0.5, "rho=0.5, eta=0"),
+        (3, 1.0, 0.5, "rho=0.5, eta=1, l=3"),
+        (0, 20.0, 0.5, "rho=0.5, eta=20"),
+    ]
+
+    # === Attractive Coulomb field (eta < 0) ===
+    attractive = [
+        (0, -1.0, 1.0, "Attractive eta=-1, rho=1"),
+        (2, -5.0, 2.0, "Attractive eta=-5, rho=2, l=2"),
+        (0, -10.0, 0.1, "Attractive eta=-10, rho=0.1"),
+        (5, -2.0, 10.0, "Attractive eta=-2, rho=10, l=5"),
+        (0, -0.5, 20.0, "Attractive eta=-0.5, rho=20"),
+    ]
+
     all_points = [
         ("tier1", tier1),
         ("tier2", tier2),
@@ -172,6 +239,9 @@ def main():
         ("tier4_extreme", tier4),
         ("recurrence", extra),
         ("nuclear_physics", nuclear),
+        ("forbidden_region", forbidden),
+        ("small_rho", small_rho),
+        ("attractive", attractive),
     ]
 
     results = {}

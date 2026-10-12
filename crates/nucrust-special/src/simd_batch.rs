@@ -11,8 +11,12 @@
 use wide::f64x4;
 
 use crate::consts::RHO_SMALL;
+#[cfg(feature = "simd")]
+use crate::coulomb::{assemble, Cf2};
 use crate::coulomb::{coulomb_wave, CoulombResult};
 use crate::error::SpecialError;
+#[cfg(feature = "simd")]
+use crate::gamma::coulomb_phase_shift;
 
 /// Computation region for binning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +91,6 @@ pub fn coulomb_wave_batch_simd(
 }
 
 /// Scalar fallback: process all points sequentially.
-#[cfg_attr(feature = "simd", allow(dead_code))]
 fn process_scalar(
     indexed: &[(usize, ComputeRegion)],
     eta: &[f64],
@@ -136,9 +139,11 @@ mod simd_cf {
 
     /// SIMD CF1: evaluate 4 CF1 values simultaneously.
     ///
-    /// CF1 gives f_l = F'_l / F_l for 4 different (l, eta, rho) combinations.
-    /// All lanes use the same l but different eta and rho.
-    pub fn cf1_x4(l: f64, eta4: f64x4, rho4: f64x4) -> Result<[f64; 4], SpecialError> {
+    /// CF1 gives f_l = F'_l / F_l for 4 different (l, eta, rho) combinations,
+    /// together with the sign of F_l (see `coulomb::cf1`).
+    /// All lanes use the same l but different eta and rho. Lanes are frozen
+    /// once converged; fails if any lane does not converge.
+    pub fn cf1_x4(l: f64, eta4: f64x4, rho4: f64x4) -> Result<([f64; 4], [f64; 4]), SpecialError> {
         let l1 = f64x4::splat(l + 1.0);
         let rho_inv = recip_x4(rho4);
 
@@ -148,6 +153,8 @@ mod simd_cf {
 
         let mut d = f64x4::ZERO;
         let mut c = h;
+        let mut sign = f64x4::ONE;
+        let mut done = f64x4::ZERO.cmp_lt(f64x4::ZERO); // all false
 
         let eps = f64x4::splat(CF_EPS);
         let one = f64x4::ONE;
@@ -167,24 +174,36 @@ mod simd_cf {
             d = clamp_small(bn + an * d);
             c = clamp_small(bn + an / c);
             d = recip_x4(d);
-            let delta = c * d;
+            let flip = d.cmp_lt(f64x4::ZERO) & !done;
+            sign = flip.blend(-sign, sign);
+            let delta = done.blend(one, c * d);
             h *= delta;
 
-            // Check convergence: all lanes must satisfy |delta - 1| < eps
-            let converged = abs_x4(delta - one).cmp_lt(eps);
-            if converged.all() {
-                return Ok(h.to_array());
+            // Converged lanes: |delta - 1| < eps
+            done |= abs_x4(delta - one).cmp_lt(eps);
+            if done.all() {
+                return Ok((h.to_array(), sign.to_array()));
             }
         }
 
-        // Return whatever we have - some lanes may have converged
-        Ok(h.to_array())
+        Err(SpecialError::ConvergenceFailure {
+            algorithm: "CF1 (Lentz, SIMD)",
+            iterations: MAX_ITER,
+            residual: f64::NAN,
+        })
     }
 
     /// SIMD CF2: evaluate 4 CF2 values simultaneously using Steed algorithm.
     ///
-    /// Returns ([p0..p3], [q0..q3]) where p + iq = H^{+'}_{l} / H^+_l.
-    pub fn cf2_x4(l: f64, eta4: f64x4, rho4: f64x4) -> Result<([f64; 4], [f64; 4]), SpecialError> {
+    /// Returns ([p0..p3], [q0..q3], [q_err0..q_err3]) where p + iq = H^{+'}_{l} / H^+_l
+    /// and q_err is the rounding-error estimate of q (see `coulomb::Cf2`).
+    /// Lanes are frozen once converged; fails if any lane does not converge.
+    #[allow(clippy::type_complexity)]
+    pub fn cf2_x4(
+        l: f64,
+        eta4: f64x4,
+        rho4: f64x4,
+    ) -> Result<([f64; 4], [f64; 4], [f64; 4]), SpecialError> {
         let one = f64x4::ONE;
         let two = f64x4::splat(2.0);
         let eps = f64x4::splat(CF_EPS);
@@ -211,12 +230,16 @@ mod simd_cf {
 
         let mut p = f64x4::ZERO;
         let mut q = one - eta4 * x_inv;
+        let mut q_scale = abs_x4(q).max(one);
+        let mut q_err = f64x4::ZERO;
+        let mut done = f64x4::ZERO.cmp_lt(f64x4::ZERO); // all false
 
         let mut pk = f64x4::ZERO;
 
         for _ in 1..=MAX_ITER {
             p += dp;
             q += dq;
+            q_scale = q_scale.max(abs_x4(q)).max(abs_x4(dq));
             pk += two;
             ar += pk;
             ai += wi;
@@ -237,13 +260,22 @@ mod simd_cf {
             // Convergence: |dp| + |dq| <= (|p| + |q|) * eps
             let lhs = abs_x4(dp) + abs_x4(dq);
             let rhs = (abs_x4(p) + abs_x4(q)) * eps;
-            if lhs.cmp_le(rhs).all() {
-                return Ok((p.to_array(), q.to_array()));
+            let newly = lhs.cmp_le(rhs) & !done;
+            q_err = newly.blend(f64x4::splat(f64::EPSILON) * q_scale + abs_x4(dq), q_err);
+            done |= newly;
+            // Freeze converged lanes: no further corrections.
+            dp = done.blend(f64x4::ZERO, dp);
+            dq = done.blend(f64x4::ZERO, dq);
+            if done.all() {
+                return Ok((p.to_array(), q.to_array(), q_err.to_array()));
             }
         }
 
-        // Return whatever we have
-        Ok((p.to_array(), q.to_array()))
+        Err(SpecialError::ConvergenceFailure {
+            algorithm: "CF2 (Steed, SIMD)",
+            iterations: MAX_ITER,
+            residual: f64::NAN,
+        })
     }
 }
 
@@ -260,6 +292,9 @@ fn process_simd_groups(
     n_l: u32,
     results: &mut [Option<CoulombResult>],
 ) -> Result<(), SpecialError> {
+    if n_l == 0 {
+        return process_scalar(indexed, eta, rho, l_min, n_l, results);
+    }
     let mut i = 0;
     while i < indexed.len() {
         let current_region = indexed[i].1;
@@ -290,31 +325,36 @@ fn process_simd_groups(
             let eta4 = f64x4::new([eta[idxs[0]], eta[idxs[1]], eta[idxs[2]], eta[idxs[3]]]);
             let rho4 = f64x4::new([rho[idxs[0]], rho[idxs[1]], rho[idxs[2]], rho[idxs[3]]]);
 
-            // Compute CF1 and CF2 for l=0 (Steed method starting point) using SIMD
-            let l0 = l_min as f64;
-            let f_ratio = simd_cf::cf1_x4(l0, eta4, rho4)?;
-            let (p_arr, q_arr) = simd_cf::cf2_x4(l0, eta4, rho4)?;
+            // CF1 at l_max (F'/F and sign of F) and CF2 at l=0 (Steed
+            // normalization), evaluated four lanes at a time. On a SIMD
+            // convergence failure, fall back to the scalar path for the group.
+            let l_max = (l_min + n_l - 1) as f64;
+            let cfs = simd_cf::cf1_x4(l_max, eta4, rho4)
+                .and_then(|cf1| simd_cf::cf2_x4(0.0, eta4, rho4).map(|cf2| (cf1, cf2)));
 
-            // Now assemble results per lane using scalar post-processing
-            // (recurrences and normalization are inherently serial per-point)
             for (lane, &idx) in idxs.iter().enumerate() {
-                let result = assemble_from_cf(
-                    eta[idx],
-                    rho[idx],
-                    l_min,
-                    n_l,
-                    f_ratio[lane],
-                    p_arr[lane],
-                    q_arr[lane],
-                );
-                match result {
-                    Ok(r) => results[idx] = Some(r),
-                    Err(_) => {
-                        // Fallback to full scalar computation on SIMD failure
-                        let r = coulomb_wave(eta[idx], rho[idx], l_min, n_l)?;
-                        results[idx] = Some(r);
+                let result = match cfs {
+                    Ok(((f, sign), (p, q, q_err))) => {
+                        let sigma = (0..n_l)
+                            .map(|k| coulomb_phase_shift(l_min + k, eta[idx]))
+                            .collect();
+                        assemble(
+                            eta[idx],
+                            rho[idx],
+                            l_min,
+                            n_l,
+                            (f[lane], sign[lane]),
+                            Ok(Cf2 {
+                                p: p[lane],
+                                q: q[lane],
+                                q_err: q_err[lane],
+                            }),
+                            sigma,
+                        )
                     }
-                }
+                    _ => coulomb_wave(eta[idx], rho[idx], l_min, n_l),
+                };
+                results[idx] = Some(result?);
             }
 
             j += 4;
@@ -332,106 +372,6 @@ fn process_simd_groups(
     }
 
     Ok(())
-}
-
-/// Assemble a CoulombResult from pre-computed CF1 and CF2 values.
-///
-/// This handles the Steed method combination and l-recurrence using
-/// scalar arithmetic, since these are inherently serial per-point.
-#[cfg(feature = "simd")]
-fn assemble_from_cf(
-    eta: f64,
-    rho: f64,
-    l_min: u32,
-    n_l: u32,
-    f_ratio: f64,
-    p: f64,
-    q: f64,
-) -> Result<CoulombResult, SpecialError> {
-    use crate::gamma::coulomb_phase_shift;
-
-    if q.abs() < 1e-300 {
-        return Err(SpecialError::NumericalOverflow {
-            context: "SIMD Steed: q ~ 0",
-        });
-    }
-
-    let l0 = l_min as f64;
-
-    // F^2 = q / ((f-p)^2 + q^2)
-    let fmp = f_ratio - p;
-    let denom = fmp * fmp + q * q;
-    let f_sq = (q / denom).abs();
-
-    // Sign from asymptotic phase
-    let sign = f_sign_scalar(l0, eta, rho);
-    let f_l0 = sign * f_sq.sqrt();
-    let fp_l0 = f_ratio * f_l0;
-    let gamm = fmp / q;
-    let g_l0 = gamm * f_l0;
-    let gp_l0 = p * g_l0 - q * f_l0;
-
-    // Build result with recurrence if n_l > 1
-    let mut f_vals = vec![0.0; n_l as usize];
-    let mut g_vals = vec![0.0; n_l as usize];
-    let mut fp_vals = vec![0.0; n_l as usize];
-    let mut gp_vals = vec![0.0; n_l as usize];
-    let mut sigma_vals = vec![0.0; n_l as usize];
-
-    f_vals[0] = f_l0;
-    g_vals[0] = g_l0;
-    fp_vals[0] = fp_l0;
-    gp_vals[0] = gp_l0;
-    sigma_vals[0] = coulomb_phase_shift(l_min, eta);
-
-    // Upward recurrence for G, downward for F
-    for k in 1..n_l as usize {
-        let l = l_min as f64 + k as f64;
-        let r = (1.0 + (eta / l).powi(2)).sqrt();
-        let s = l / rho + eta / l;
-
-        // G upward: G_{l} = (S_l * G_{l-1} - G'_{l-1}) / R_l
-        g_vals[k] = (s * g_vals[k - 1] - gp_vals[k - 1]) / r;
-        gp_vals[k] = s * g_vals[k] - r * g_vals[k - 1];
-
-        sigma_vals[k] = coulomb_phase_shift(l_min + k as u32, eta);
-    }
-
-    // F from Wronskian: F_l = 1/(G_l * f_ratio_l - G'_l) if we have f_ratio at each l
-    // Or use downward recurrence from F at l_min
-    // For simplicity when n_l > 1, use Wronskian: F_l * G'_l - F'_l * G_l = 1
-    for k in 1..n_l as usize {
-        let l = l_min as f64 + k as f64;
-        let r = (1.0 + (eta / l).powi(2)).sqrt();
-        let s = l / rho + eta / l;
-
-        // F upward from Wronskian
-        f_vals[k] = (s * f_vals[k - 1] - fp_vals[k - 1]) / r;
-        fp_vals[k] = s * f_vals[k] - r * f_vals[k - 1];
-    }
-
-    Ok(CoulombResult {
-        f: f_vals,
-        g: g_vals,
-        fp: fp_vals,
-        gp: gp_vals,
-        sigma: sigma_vals,
-        exponent: 0.0,
-    })
-}
-
-/// Determine sign of F_l at l=0 using asymptotic phase.
-#[cfg(feature = "simd")]
-fn f_sign_scalar(l: f64, eta: f64, rho: f64) -> f64 {
-    use crate::gamma::coulomb_phase_shift;
-
-    let rho_tp = eta + (eta * eta + l * (l + 1.0)).sqrt();
-    if rho < rho_tp {
-        return 1.0;
-    }
-    let sigma = coulomb_phase_shift(l as u32, eta);
-    let theta = rho - eta * (2.0 * rho).ln() - l * std::f64::consts::FRAC_PI_2 + sigma;
-    theta.sin().signum()
 }
 
 #[cfg(test)]
@@ -504,7 +444,7 @@ mod tests {
             let eta4 = f64x4::new([0.0, 1.0, 2.0, 5.0]);
             let rho4 = f64x4::new([5.0, 5.0, 5.0, 5.0]);
 
-            let results = simd_cf::cf1_x4(0.0, eta4, rho4).unwrap();
+            let (results, signs) = simd_cf::cf1_x4(0.0, eta4, rho4).unwrap();
 
             // Compare with scalar CF1 via coulomb_wave
             for (i, (&eta, &rho)) in [0.0, 1.0, 2.0, 5.0]
@@ -515,6 +455,7 @@ mod tests {
                 let scalar = crate::coulomb::coulomb_wave(eta, rho, 0, 1).unwrap();
                 // CF1 gives f_ratio = F'/F
                 let scalar_ratio = scalar.fp[0] / scalar.f[0];
+                assert_eq!(signs[i], scalar.f[0].signum(), "CF1 sign at lane {i}");
                 let rel_err = if scalar_ratio.abs() > 1e-10 {
                     ((results[i] - scalar_ratio) / scalar_ratio).abs()
                 } else {
@@ -536,7 +477,7 @@ mod tests {
             let eta4 = f64x4::new([0.0, 1.0, 2.0, 3.0]);
             let rho4 = f64x4::new([5.0, 5.0, 7.0, 10.0]);
 
-            let (p, q) = simd_cf::cf2_x4(0.0, eta4, rho4).unwrap();
+            let (p, q, _) = simd_cf::cf2_x4(0.0, eta4, rho4).unwrap();
             for i in 0..4 {
                 assert!(p[i].is_finite(), "p[{}] not finite", i);
                 assert!(q[i].is_finite(), "q[{}] not finite", i);
@@ -568,6 +509,38 @@ mod tests {
                     scalar.f[0],
                     rel_err_f
                 );
+            }
+        }
+
+        #[test]
+        fn batch_simd_forbidden_and_multi_l_match_scalar() {
+            // Groups of 4 in the oscillatory region near the turning point
+            // (where an asymptotic-phase sign would be wrong) and deep in the
+            // classically forbidden region (where Steed's q loses accuracy),
+            // with several l values: SIMD must agree with the scalar path.
+            let etas = vec![5.0, 10.0, 20.0, 2.0, 10.0, 5.0, 20.0, 30.0];
+            let rhos = vec![10.0, 20.0, 40.0, 5.0, 3.0, 2.0, 5.0, 10.0];
+            for (l_min, n_l) in [(0, 1), (0, 4), (2, 3)] {
+                let simd =
+                    crate::simd_batch::coulomb_wave_batch_simd(&etas, &rhos, l_min, n_l).unwrap();
+                for (i, (&e, &r)) in etas.iter().zip(rhos.iter()).enumerate() {
+                    let scalar = crate::coulomb::coulomb_wave(e, r, l_min, n_l).unwrap();
+                    for k in 0..n_l as usize {
+                        for (name, a, b) in [
+                            ("F", simd[i].f[k], scalar.f[k]),
+                            ("G", simd[i].g[k], scalar.g[k]),
+                            ("F'", simd[i].fp[k], scalar.fp[k]),
+                            ("G'", simd[i].gp[k], scalar.gp[k]),
+                        ] {
+                            let rel = ((a - b) / b).abs();
+                            assert!(
+                                rel < 1e-13,
+                                "{name}_{} mismatch (eta={e}, rho={r}): simd={a}, scalar={b}",
+                                l_min as usize + k
+                            );
+                        }
+                    }
+                }
             }
         }
     }
