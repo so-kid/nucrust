@@ -26,6 +26,11 @@ let xs = gpu.hf_summation(&tc, &nld_params, &gsf_params, &hf_config)?;
 let rates = gpu.macs_integrate(&[xs], &temperatures, &macs_config)?;
 ```
 
+The GPU Hauser-Feshbach kernel has no width fluctuation correction, so
+`GpuBackend::hf_summation` returns an error unless `hf_config.wfc_model` is
+`WfcModel::None` (`HfConfig::default()` selects `Moldauer`, which the CPU
+backend applies).
+
 Via CLI:
 
 ```bash

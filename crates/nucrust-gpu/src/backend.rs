@@ -184,6 +184,7 @@ impl ComputeBackend for GpuBackend {
         gsf_params: &GsfModelParams,
         config: &HfConfig,
     ) -> Result<CrossSection, CoreError> {
+        crate::hf_support::check_hf_config(config)?;
         let (nld_t, nld_a) = match nld_params {
             NldModelParams::ConstantTemperature { t, e0: _ } => (*t, 6.0),
             NldModelParams::Bsfg { a, .. } => (0.88, *a),

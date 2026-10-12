@@ -64,6 +64,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   is now included in the summation, with gamma rays and particle continua as
   lumped weak channels; `WfcModel::Goe` is rejected (unvalidated). The CPU
   backend forwards `wfc_model` from `nucrust_core::backend::HfConfig`
+- The GPU backend's `hf_summation` returns an error unless
+  `wfc_model == WfcModel::None` (the GPU kernel has no width fluctuation
+  correction), instead of silently ignoring it
 - Particle transmission coefficients below the first grid energy are
   extrapolated as T_l ∝ ε^(l+1/2) instead of held constant
 
