@@ -63,6 +63,13 @@ pub struct NumerovConfig {
     pub convergence_tl: f64,
     /// Maximum orbital angular momentum.
     pub max_l: u32,
+    /// Kinematics of the radial equation (default: non-relativistic).
+    pub kinematics: Kinematics,
+    /// Energy at which energy-dependent optical potential depths are evaluated
+    /// (default: the CM relative-motion energy).
+    pub omp_energy: OmpEnergy,
+    /// Target mass (amu) for the kinematics; `None` uses the mass number A.
+    pub target_mass_amu: Option<f64>,
 }
 
 impl Default for NumerovConfig {
@@ -72,8 +79,36 @@ impl Default for NumerovConfig {
             r_min: 0.01,
             convergence_tl: 1e-10,
             max_l: 30,
+            kinematics: Kinematics::NonRelativistic,
+            omp_energy: OmpEnergy::CenterOfMass,
+            target_mass_amu: None,
         }
     }
+}
+
+/// Kinematics used to turn the relative-motion energy `E` into the wave number `k` and the
+/// potential coupling `2 mu / hbar^2` of the radial Schrodinger equation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Kinematics {
+    /// `k^2 = 2 mu E / hbar^2` with the reduced rest mass `mu`.
+    #[default]
+    NonRelativistic,
+    /// Relativistic kinematics as in ECIS (TALYS `relativistic y`): the projectile LAB
+    /// kinetic energy is `E_lab = E (m + M) / M`; `k` is the relativistic CM momentum
+    /// at that `E_lab`, and the reduced mass is replaced by the reduced total CM energy
+    /// `E_1 E_2 / (E_1 + E_2)` in the potential coupling.
+    Relativistic,
+}
+
+/// Energy passed to `OpticalPotential::potential` for its energy-dependent depths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OmpEnergy {
+    /// The CM relative-motion energy `E`.
+    #[default]
+    CenterOfMass,
+    /// The projectile LAB kinetic energy `E_lab = E (m + M) / M`, as ECIS/TALYS do for
+    /// global and local nucleon potentials (KD depths are parameterized in `E_lab`).
+    Laboratory,
 }
 
 /// Hauser-Feshbach configuration.

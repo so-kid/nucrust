@@ -46,7 +46,9 @@ pub mod units;
 /// Wigner 3j, 6j symbols and Clebsch-Gordan coefficients.
 pub mod wigner;
 
-pub use backend::{ComputeBackend, GsfModelParams, NldModelParams, ToDeviceParams};
+pub use backend::{
+    ComputeBackend, GsfModelParams, Kinematics, NldModelParams, OmpEnergy, ToDeviceParams,
+};
 pub use channel::Channel;
 pub use collision_matrix::CollisionMatrix;
 pub use coupled_channel::{

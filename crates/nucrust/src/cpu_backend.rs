@@ -294,14 +294,7 @@ pub fn cpu_transmission_coeffs(
     energies: &EnergyGrid,
     config: &NumerovConfig,
 ) -> Result<TransmissionCoeffs, CoreError> {
-    let omp = KoningDelaroche;
-    let optical_config = nucrust_core::backend::NumerovConfig {
-        step_size: config.step_size,
-        r_min: config.r_min,
-        convergence_tl: config.convergence_tl,
-        max_l: config.max_l,
-    };
-    compute_transmission_coeffs(&omp, channel, energies, &optical_config)
+    compute_transmission_coeffs(&KoningDelaroche, channel, energies, config)
 }
 
 #[cfg(test)]
