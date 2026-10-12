@@ -8,6 +8,7 @@ use nucrust_core::spin::Parity;
 use nucrust_core::traits::{GammaStrength, LevelDensity, Multipole};
 use nucrust_core::{Channel, CoreError, Projectile, TransmissionCoeffs};
 
+use crate::wfc::{moldauer_w_row, MoldauerQuadrature};
 use crate::{MIN_EMISSION_ENERGY, MIN_EXCITATION, NUMERICAL_FLOOR};
 use std::f64::consts::PI;
 
@@ -43,9 +44,11 @@ pub struct DiscreteLevels {
 pub struct HfConfig {
     /// Maximum total angular momentum J (in units of 2J).
     pub two_j_max: i32,
-    /// Width fluctuation correction model.
+    /// Width fluctuation correction model. `Moldauer` (default) and `None` are
+    /// supported; `Goe` is rejected by [`hauser_feshbach`].
     pub wfc_model: WfcModel,
-    /// Number of quadrature points for WFC integration.
+    /// Number of quadrature points for the Moldauer WFC integral
+    /// (see [`MoldauerQuadrature`]).
     pub wfc_quadrature: usize,
     /// Exit channels to include.
     pub exit_channels: Vec<Projectile>,
@@ -56,7 +59,7 @@ impl Default for HfConfig {
         Self {
             two_j_max: 60, // J_max = 30
             wfc_model: WfcModel::Moldauer,
-            wfc_quadrature: 8,
+            wfc_quadrature: 40,
             exit_channels: vec![
                 Projectile::Neutron,
                 Projectile::Proton,
@@ -138,6 +141,7 @@ fn orbital_parity(l: u32) -> Parity {
 /// T_a(E, J, pi) = sum of T_{lj}(E) over all (l, j) with
 /// - j-I coupling: |j - I| <= J <= j + I (I = target spin)
 /// - parity selection: (-1)^l * pi_A = pi (nucleons and alphas have positive intrinsic parity)
+#[cfg(test)]
 fn entrance_transmission(
     tc: &TransmissionCoeffs,
     e_idx: usize,
@@ -145,7 +149,8 @@ fn entrance_transmission(
     parity: Parity,
     proj_spin_2j: i32,
 ) -> f64 {
-    particle_transmission(
+    let mut channels = Vec::new();
+    push_grid_channels(
         tc,
         e_idx,
         two_j,
@@ -153,33 +158,31 @@ fn entrance_transmission(
         proj_spin_2j,
         TARGET_TWO_SPIN,
         TARGET_PARITY,
-    )
+        &mut channels,
+    );
+    channels.iter().sum()
 }
 
-/// Sum a per-(l, j) transmission contribution over all partial waves that
-/// couple to the compound state (J, pi) together with a residual/target state
-/// (I, pi_I).
+/// Visit every partial wave (l, j) of a particle that couples to the compound state
+/// (J, pi) together with a residual/target state (I, pi_I).
 ///
 /// For a spin-1/2 particle the stored j = l -+ 1/2 values are used directly and
-/// each (l, j) contributes once if |j - I| <= J <= j + I and
+/// each (l, j) is visited once if |j - I| <= J <= j + I and
 /// (-1)^l pi_I = pi. For a spin-0 particle j = l and the j_index = 1 slot holds T_l.
 /// Summed over J with weight (2J+1) this reproduces
 /// sigma_CN = pi/k^2 * sum_{lj} (2j+1)/(2s+1) T_{lj}.
-fn sum_over_partial_waves<F>(
-    tc: &TransmissionCoeffs,
+fn for_each_partial_wave<F>(
+    l_max: u32,
     two_j: i32,
     parity: Parity,
     proj_spin_2j: i32,
     two_i: i32,
     parity_i: Parity,
-    mut t_of: F,
-) -> f64
-where
-    F: FnMut(u32, usize) -> f64,
+    mut visit: F,
+) where
+    F: FnMut(u32, usize),
 {
-    let mut t_sum = 0.0;
-
-    for l in 0..=tc.l_max {
+    for l in 0..=l_max {
         if orbital_parity(l) * parity_i != parity {
             continue;
         }
@@ -205,16 +208,22 @@ where
                 continue;
             }
 
-            t_sum += t_of(l, j_idx);
+            visit(l, j_idx);
         }
     }
-
-    t_sum
 }
 
-/// Compute particle channel transmission for a given (J, pi) at a grid energy index,
-/// leaving the residual nucleus in a state of spin `two_i / 2` and parity `parity_i`.
-fn particle_transmission(
+/// T_{lj} at grid index `e_idx` (0 outside the stored range).
+fn grid_transmission(tc: &TransmissionCoeffs, e_idx: usize, l: u32, j_idx: usize) -> f64 {
+    let n_e = tc.energy.len();
+    let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
+    tc.data.get(flat_idx).copied().unwrap_or(0.0)
+}
+
+/// Push the individual T_{lj}(E_grid[e_idx]) of every partial wave coupling (J, pi) to
+/// the residual state (I, pi_I) onto `out` (zero entries are skipped).
+#[allow(clippy::too_many_arguments)]
+fn push_grid_channels(
     tc: &TransmissionCoeffs,
     e_idx: usize,
     two_j: i32,
@@ -222,29 +231,30 @@ fn particle_transmission(
     proj_spin_2j: i32,
     two_i: i32,
     parity_i: Parity,
-) -> f64 {
-    let n_e = tc.energy.len();
-    sum_over_partial_waves(
-        tc,
+    out: &mut Vec<f64>,
+) {
+    for_each_partial_wave(
+        tc.l_max,
         two_j,
         parity,
         proj_spin_2j,
         two_i,
         parity_i,
         |l, j_idx| {
-            let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + e_idx;
-            if flat_idx < tc.data.len() {
-                tc.data[flat_idx]
-            } else {
-                0.0
+            let t = grid_transmission(tc, e_idx, l, j_idx);
+            if t > 0.0 {
+                out.push(t);
             }
         },
-    )
+    );
 }
 
 /// Interpolate T_{lj}(ε) at arbitrary energy ε from the transmission coefficient grid.
 ///
-/// Uses linear interpolation in log-energy space. Returns 0 if ε ≤ 0.
+/// Linear interpolation inside the grid; constant above it. Below the first grid
+/// energy e_0 the low-energy behavior T_l ∝ ε^(l+1/2) of neutral particles is used,
+/// T(ε) = T(e_0) (ε/e_0)^(l+1/2) (for charged particles this is an upper bound of the
+/// Coulomb-suppressed value). Returns 0 if ε ≤ 0.
 fn interpolate_transmission(tc: &TransmissionCoeffs, energy: f64, l: u32, j_idx: usize) -> f64 {
     if energy <= 0.0 {
         return 0.0;
@@ -252,22 +262,12 @@ fn interpolate_transmission(tc: &TransmissionCoeffs, energy: f64, l: u32, j_idx:
     let n_e = tc.energy.len();
     let e_grid = tc.energy.as_slice();
 
-    // Clamp to grid range
     if energy <= e_grid[0] {
-        let flat_idx = l as usize * (2 * n_e) + j_idx * n_e;
-        return if flat_idx < tc.data.len() {
-            tc.data[flat_idx]
-        } else {
-            0.0
-        };
+        let t0 = grid_transmission(tc, 0, l, j_idx);
+        return t0 * (energy / e_grid[0]).powf(l as f64 + 0.5);
     }
     if energy >= e_grid[n_e - 1] {
-        let flat_idx = l as usize * (2 * n_e) + j_idx * n_e + (n_e - 1);
-        return if flat_idx < tc.data.len() {
-            tc.data[flat_idx]
-        } else {
-            0.0
-        };
+        return grid_transmission(tc, n_e - 1, l, j_idx);
     }
 
     // Binary search for bracketing interval
@@ -279,18 +279,8 @@ fn interpolate_transmission(tc: &TransmissionCoeffs, energy: f64, l: u32, j_idx:
     let e1 = e_grid[idx + 1];
     let t = (energy - e0) / (e1 - e0);
 
-    let base = l as usize * (2 * n_e) + j_idx * n_e;
-    let t0 = if base + idx < tc.data.len() {
-        tc.data[base + idx]
-    } else {
-        0.0
-    };
-    let t1 = if base + idx + 1 < tc.data.len() {
-        tc.data[base + idx + 1]
-    } else {
-        0.0
-    };
-
+    let t0 = grid_transmission(tc, idx, l, j_idx);
+    let t1 = grid_transmission(tc, idx + 1, l, j_idx);
     t0 + t * (t1 - t0)
 }
 
@@ -307,91 +297,109 @@ fn particle_transmission_at_energy(
     if energy <= 0.0 {
         return 0.0;
     }
-    sum_over_partial_waves(
-        tc,
+    let mut t_sum = 0.0;
+    for_each_partial_wave(
+        tc.l_max,
         two_j,
         parity,
         proj_spin_2j,
         two_i,
         parity_i,
-        |l, j_idx| interpolate_transmission(tc, energy, l, j_idx),
-    )
+        |l, j_idx| t_sum += interpolate_transmission(tc, energy, l, j_idx),
+    );
+    t_sum
+}
+
+/// Transmission of one exit channel for a given compound state (J, pi), split for the
+/// width fluctuation correction into individually resolved channels (a single (l, j)
+/// to a discrete residual state) and a lumped sum of many weak channels (continuum bins,
+/// gamma rays).
+#[derive(Debug, Clone, Default)]
+struct ChannelGroup {
+    resolved: Vec<f64>,
+    lumped: f64,
+}
+
+impl ChannelGroup {
+    fn total(&self) -> f64 {
+        self.resolved.iter().sum::<f64>() + self.lumped
+    }
 }
 
 /// Compute exit particle transmission with continuum level density integration.
 ///
-/// T_b(J, π) = Σ_{discrete} T̃(ε_i) + ∫_{E_complete}^{U_max} Σ_{J'π'} T̃(ε(U)) · ρ(U, J', π') dU
+/// T_b(J, π) = Σ_{discrete i} Σ_{lj} T_{lj}(ε_i) + ∫_{E_complete}^{U_max} Σ_{J'π'} T̃(ε(U)) · ρ(U, J', π') dU
 ///
 /// where ε(U) = U_max - U is the exit particle kinetic energy and
-/// U_max = excitation - separation_energy.
+/// U_max = excitation - separation_energy. Every open final state is included down to
+/// ε → 0 (no emission-energy cutoff): at low incident energy the decay back to the
+/// target ground state (compound elastic) is the dominant channel.
+///
+/// Discrete levels give one resolved channel per (l, j); the continuum is lumped.
+/// With `skip_ground_state`, a discrete level at zero excitation is left out (the caller
+/// supplies the compound-elastic channels from the entrance transmissions instead).
 fn exit_particle_continuum_transmission(
     ecd: &ExitChannelData,
     excitation: f64,
     two_j: i32,
     parity: Parity,
-) -> f64 {
-    let sep_e = match ecd.separation_energy {
-        Some(s) => s,
-        None => return 0.0, // Can't compute without separation energy
-    };
-    let nld = match ecd.daughter_nld {
-        Some(n) => n,
-        None => return 0.0,
-    };
-    let daughter = match ecd.daughter_nuclide {
-        Some(ref n) => n,
-        None => return 0.0,
+    skip_ground_state: bool,
+    out: &mut ChannelGroup,
+) {
+    let (Some(sep_e), Some(nld), Some(daughter)) = (
+        ecd.separation_energy,
+        ecd.daughter_nld,
+        ecd.daughter_nuclide.as_ref(),
+    ) else {
+        return; // Can't compute without separation energy, NLD and daughter
     };
 
     let u_max = excitation - sep_e; // max daughter excitation
-    if u_max < MIN_EMISSION_ENERGY {
-        return 0.0;
+    if u_max <= 0.0 {
+        return;
     }
 
     let exit_spin_2j = (2.0 * ecd.channel.projectile.spin()) as i32;
-    let mut t_total = 0.0;
 
-    // Part 1: Discrete level contributions
+    // Part 1: Discrete level contributions, one resolved channel per (l, j).
     let e_complete = ecd.daughter_discrete.map_or(0.0, |d| d.e_complete);
     if let Some(disc) = ecd.daughter_discrete {
         for level in &disc.levels {
-            if level.energy >= u_max {
+            if level.energy >= u_max || level.energy > disc.e_complete {
                 break;
             }
-            if level.energy > disc.e_complete {
-                break;
-            }
-            let epsilon = u_max - level.energy;
-            if epsilon < MIN_EMISSION_ENERGY {
+            if skip_ground_state && level.energy <= GROUND_STATE_TOLERANCE {
                 continue;
             }
-
-            // Sum T over all partial waves coupling J = j_exit + J_daughter.
+            let epsilon = u_max - level.energy;
             let two_jf = (2.0 * level.spin).round() as i32;
-            t_total += particle_transmission_at_energy(
-                ecd.tc,
-                epsilon,
+            for_each_partial_wave(
+                ecd.tc.l_max,
                 two_j,
                 parity,
                 exit_spin_2j,
                 two_jf,
                 level.parity,
+                |l, j_idx| {
+                    let t = interpolate_transmission(ecd.tc, epsilon, l, j_idx);
+                    if t > 0.0 {
+                        out.resolved.push(t);
+                    }
+                },
             );
         }
     }
 
-    // Part 2: Continuum integration above E_complete
+    // Part 2: Continuum integration above E_complete (trapezoidal rule; the U = U_max
+    // end point has ε = 0 and T = 0).
     if u_max > e_complete {
         let n_points = 30;
-        let u_range = u_max - e_complete;
-        let du = u_range / n_points as f64;
+        let du = (u_max - e_complete) / n_points as f64;
 
-        for i in 1..n_points {
+        for i in 0..n_points {
             let u_daughter = e_complete + i as f64 * du;
-            let epsilon = u_max - u_daughter; // exit particle energy
-            if epsilon < MIN_EMISSION_ENERGY {
-                continue;
-            }
+            let epsilon = u_max - u_daughter; // exit particle energy, > 0
+            let weight = if i == 0 { 0.5 * du } else { du };
 
             // Sum over final spins and parities of daughter: integer spins for
             // even-A, half-integer for odd-A daughters, up to J + j_max.
@@ -414,14 +422,15 @@ fn exit_particle_continuum_transmission(
                         two_jf,
                         final_parity,
                     );
-                    t_total += t_at_eps * rho * du;
+                    out.lumped += t_at_eps * rho * weight;
                 }
             }
         }
     }
-
-    t_total
 }
+
+/// Discrete levels at or below this excitation (MeV) are treated as the ground state.
+const GROUND_STATE_TOLERANCE: f64 = 1e-6;
 
 /// Check if a gamma transition of given multipole can reach (J_final, pi_final)
 /// from (J_initial, pi_initial).
@@ -538,8 +547,17 @@ fn gamma_transmission(
 
 /// Compute the Hauser-Feshbach cross section at a single entrance energy.
 ///
-/// Sums the (J, pi) contributions for the grid energy at `e_idx`.
-fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) -> HfResult {
+/// Sums the (J, pi) contributions for the grid energy at `e_idx`:
+///
+/// sigma_b = pi/k^2 sum_{J,pi} g_J sum_{a in entrance} sum_{c in b} T_a T_c W_ac / T_total
+///
+/// where W_ac are the Moldauer width fluctuation factors (1 without WFC).
+fn hauser_feshbach_at_energy(
+    calc: &HfCalculation,
+    quad: Option<&MoldauerQuadrature>,
+    e_idx: usize,
+    energy: f64,
+) -> HfResult {
     let proj_spin_2j = (2.0 * calc.entrance.projectile.spin()) as i32;
     let target_spin_2j = TARGET_TWO_SPIN;
     let n_exit = calc.config.exit_channels.len();
@@ -551,36 +569,81 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
         nucrust_core::Nuclide::new(target.z() + projectile.z(), target.a() + projectile.a())
             .unwrap_or(target);
 
-    // The entrance channel (compound elastic) competes in the denominator unless
-    // an exit particle channel of the same type already accounts for it.
-    let entrance_in_exits = calc.config.exit_channels.contains(&projectile)
-        && calc
-            .exit_particle_channels
+    // The exit particle channel (if any) that contains the compound-elastic decay back to
+    // the target ground state, and whether that state is resolved there: either the
+    // daughter's discrete level scheme includes the ground state at emission energy
+    // E (continuum treatment), or the direct grid lookup to the target ground state is used.
+    // The elastic channels then take the entrance T_lj, so that elastic decay and
+    // formation are described by the same (l, j) channels (needed for W_aa).
+    let elastic_idx = calc
+        .config
+        .exit_channels
+        .iter()
+        .position(|p| *p == projectile);
+    let elastic_ecd = elastic_idx.and_then(|_| {
+        calc.exit_particle_channels
             .iter()
-            .any(|e| e.channel.projectile == projectile);
+            .find(|e| e.channel.projectile == projectile)
+    });
+    let entrance_in_exits = elastic_ecd.is_some();
+    let elastic_resolved = elastic_ecd.is_some_and(|ecd| {
+        if ecd.separation_energy.is_some() && ecd.daughter_nld.is_some() {
+            ecd.daughter_nuclide == Some(target)
+                && ecd
+                    .separation_energy
+                    .is_some_and(|s| (s - calc.entrance.q_value).abs() < GROUND_STATE_TOLERANCE)
+                && ecd.daughter_discrete.is_some_and(|d| {
+                    d.levels
+                        .first()
+                        .is_some_and(|l| l.energy <= GROUND_STATE_TOLERANCE)
+                })
+        } else {
+            ecd.channel.target == target
+        }
+    });
+
+    // Wave number and statistical prefactor 10 fm² → mb.
+    let mu = nucrust_core::units::reduced_mass(
+        calc.entrance.projectile.mass_amu(),
+        calc.entrance.target.a() as f64,
+    );
+    let k = nucrust_core::units::wave_number(mu, energy);
+    let pi_over_k_sq = PI / (k * k) * 10.0;
+    let excitation = energy + calc.entrance.q_value;
 
     let mut sigma_cn = 0.0;
     let mut sigma_exit = vec![0.0; n_exit];
+    let mut entrance = Vec::new();
+    let mut groups = vec![ChannelGroup::default(); n_exit];
 
     // Loop over J, pi
     for two_j in 0..=calc.config.two_j_max {
         for &parity in &[Parity::Positive, Parity::Negative] {
-            // Entrance channel transmission
-            let t_a = entrance_transmission(calc.tc_entrance, e_idx, two_j, parity, proj_spin_2j);
+            // Entrance channel transmissions T_a, one per (l, j)
+            entrance.clear();
+            push_grid_channels(
+                calc.tc_entrance,
+                e_idx,
+                two_j,
+                parity,
+                proj_spin_2j,
+                TARGET_TWO_SPIN,
+                TARGET_PARITY,
+                &mut entrance,
+            );
+            let t_a: f64 = entrance.iter().sum();
             if t_a < NUMERICAL_FLOOR {
                 continue;
             }
 
-            let excitation = energy + calc.entrance.q_value;
-
-            // Compute transmission for ALL exit channels
-            let mut t_exit = vec![0.0; n_exit];
-            let mut t_total = if entrance_in_exits { 0.0 } else { t_a };
-
+            // Transmissions of ALL exit channels
             for (ch_idx, proj) in calc.config.exit_channels.iter().enumerate() {
+                let group = &mut groups[ch_idx];
+                group.resolved.clear();
+                group.lumped = 0.0;
                 if *proj == Projectile::Gamma {
-                    // Gamma channel: compute from NLD + GSF
-                    let t_g = gamma_transmission(
+                    // Gamma channel: many weak channels, computed from NLD + GSF
+                    group.lumped = gamma_transmission(
                         calc.gsf,
                         calc.nld,
                         &compound,
@@ -589,38 +652,49 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
                         parity,
                         calc.discrete_levels,
                     );
-                    t_exit[ch_idx] = t_g;
-                    t_total += t_g;
-                } else {
-                    // Particle exit channel
-                    if let Some(ecd) = calc
-                        .exit_particle_channels
-                        .iter()
-                        .find(|e| e.channel.projectile == *proj)
-                    {
-                        let t_b = if ecd.separation_energy.is_some() && ecd.daughter_nld.is_some() {
-                            // Full continuum integration: ∫ T(ε) · ρ(U) dU
-                            exit_particle_continuum_transmission(ecd, excitation, two_j, parity)
-                        } else {
-                            // Fallback: direct grid lookup (no NLD integration)
-                            let exit_spin_2j = (2.0 * proj.spin()) as i32;
-                            // to the residual ground state (assumed 0+ like the target).
-                            particle_transmission(
-                                ecd.tc,
-                                e_idx,
-                                two_j,
-                                parity,
-                                exit_spin_2j,
-                                TARGET_TWO_SPIN,
-                                TARGET_PARITY,
-                            )
-                        };
-                        t_exit[ch_idx] = t_b;
-                        t_total += t_b;
-                    }
+                    continue;
+                }
+                let Some(ecd) = calc
+                    .exit_particle_channels
+                    .iter()
+                    .find(|e| e.channel.projectile == *proj)
+                else {
+                    continue;
+                };
+                let is_elastic = Some(ch_idx) == elastic_idx && elastic_resolved;
+                if is_elastic {
+                    group.resolved.extend_from_slice(&entrance);
+                }
+                if ecd.separation_energy.is_some() && ecd.daughter_nld.is_some() {
+                    // Full continuum integration: ∫ T(ε) · ρ(U) dU
+                    exit_particle_continuum_transmission(
+                        ecd, excitation, two_j, parity, is_elastic, group,
+                    );
+                } else if !is_elastic {
+                    // Fallback: direct grid lookup to the residual ground state
+                    // (assumed 0+ like the target), no NLD integration.
+                    let exit_spin_2j = (2.0 * proj.spin()) as i32;
+                    push_grid_channels(
+                        ecd.tc,
+                        e_idx,
+                        two_j,
+                        parity,
+                        exit_spin_2j,
+                        TARGET_TWO_SPIN,
+                        TARGET_PARITY,
+                        &mut group.resolved,
+                    );
                 }
             }
 
+            // The entrance channel competes in the denominator unless an exit particle
+            // channel of the same type already accounts for it.
+            let t_exit_sum: f64 = groups.iter().map(ChannelGroup::total).sum();
+            let t_total = if entrance_in_exits {
+                t_exit_sum
+            } else {
+                t_exit_sum + t_a
+            };
             if t_total < NUMERICAL_FLOOR {
                 continue;
             }
@@ -628,20 +702,51 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
             // Statistical weight
             let g = (two_j as f64 + 1.0)
                 / ((proj_spin_2j as f64 + 1.0) * (target_spin_2j as f64 + 1.0));
-
-            // Wave number
-            let mu = nucrust_core::units::reduced_mass(
-                calc.entrance.projectile.mass_amu(),
-                calc.entrance.target.a() as f64,
-            );
-            let k = nucrust_core::units::wave_number(mu, energy);
-            let k_sq = k * k;
-
-            let prefactor = PI / k_sq * g * 10.0; // 10 fm² → mb
-
+            let prefactor = pi_over_k_sq * g;
             sigma_cn += prefactor * t_a;
-            for (ch_idx, &t_b) in t_exit.iter().enumerate() {
-                sigma_exit[ch_idx] += prefactor * t_a * t_b / t_total;
+
+            // Width fluctuations need the entrance channels among the resolved ones:
+            // as the compound-elastic exit channels, or as an extra competing channel
+            // when no particle exit channel of the entrance type is included.
+            let wfc_quad = quad.filter(|_| elastic_resolved || !entrance_in_exits);
+            let Some(wfc_quad) = wfc_quad else {
+                for (sigma, group) in sigma_exit.iter_mut().zip(&groups) {
+                    *sigma += prefactor * t_a * group.total() / t_total;
+                }
+                continue;
+            };
+
+            // Flatten the resolved channels: entrance channels first.
+            let mut resolved = Vec::new();
+            let mut lumped = 0.0;
+            if !elastic_resolved {
+                resolved.extend_from_slice(&entrance);
+            }
+            let mut ranges = Vec::with_capacity(n_exit);
+            for group in &groups {
+                let start = resolved.len();
+                resolved.extend_from_slice(&group.resolved);
+                ranges.push(start..resolved.len());
+                lumped += group.lumped;
+            }
+            // Position of the entrance channels in `resolved`.
+            let entrance_start = match elastic_idx {
+                Some(idx) if elastic_resolved => ranges[idx].start,
+                _ => 0,
+            };
+
+            for (i, &t_ent) in entrance.iter().enumerate() {
+                let (w_row, w_lumped) =
+                    moldauer_w_row(&resolved, lumped, entrance_start + i, wfc_quad);
+                for ((sigma, group), range) in sigma_exit.iter_mut().zip(&groups).zip(&ranges) {
+                    let t_w: f64 = resolved[range.clone()]
+                        .iter()
+                        .zip(&w_row[range.clone()])
+                        .map(|(t, w)| t * w)
+                        .sum::<f64>()
+                        + group.lumped * w_lumped;
+                    *sigma += prefactor * t_ent * t_w / t_total;
+                }
             }
         }
     }
@@ -657,11 +762,32 @@ fn hauser_feshbach_at_energy(calc: &HfCalculation, e_idx: usize, energy: f64) ->
 /// Returns cross sections for all energies in the entrance transmission coefficient grid.
 /// sigma_channels contains one entry per exit channel in config.exit_channels order.
 ///
+/// Width fluctuations follow `config.wfc_model`: `Moldauer` applies the Moldauer
+/// correction (see [`moldauer_w_row`](crate::wfc::moldauer_w_row)), with the gamma
+/// channel and particle continua treated as lumped weak channels. It needs the entrance
+/// channels resolved: when a particle exit channel of the entrance type is included, its
+/// daughter discrete levels must contain the target ground state (or the direct grid
+/// lookup must be used); otherwise the correction is skipped (W = 1). `Goe` returns an
+/// error (the GOE triple integral is not validated).
+///
 /// With the `parallel` feature, energies are distributed across rayon worker
 /// threads (each energy point is independent); results are identical to the
 /// sequential path.
 pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError> {
     let energies = calc.tc_entrance.energy.as_slice();
+    let quad = match calc.config.wfc_model {
+        WfcModel::None => None,
+        WfcModel::Moldauer => Some(MoldauerQuadrature::new(calc.config.wfc_quadrature)),
+        WfcModel::Goe => {
+            return Err(CoreError::InvalidParameter {
+                name: "wfc_model",
+                value: f64::NAN,
+                reason: "GOE width fluctuations are not supported by hauser_feshbach; \
+                         use Moldauer or None",
+            })
+        }
+    };
+    let quad = quad.as_ref();
 
     #[cfg(feature = "parallel")]
     {
@@ -669,7 +795,7 @@ pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError>
         Ok(energies
             .par_iter()
             .enumerate()
-            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, e_idx, energy))
+            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, quad, e_idx, energy))
             .collect())
     }
 
@@ -678,7 +804,7 @@ pub fn hauser_feshbach(calc: &HfCalculation) -> Result<Vec<HfResult>, CoreError>
         Ok(energies
             .iter()
             .enumerate()
-            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, e_idx, energy))
+            .map(|(e_idx, &energy)| hauser_feshbach_at_energy(calc, quad, e_idx, energy))
             .collect())
     }
 }
@@ -1159,12 +1285,355 @@ mod tests {
         assert!(t_mid > 0.5 && t_mid < 0.8, "interp: {}", t_mid);
         assert!((t_mid - 0.65).abs() < 1e-10, "expected 0.65, got {}", t_mid);
 
-        // Below grid
+        // Below grid: T_l ∝ ε^(l+1/2) (s wave: sqrt)
         let t_low = interpolate_transmission(&tc, 0.5, 0, 1);
-        assert!((t_low - 0.5).abs() < 1e-10, "below grid: {}", t_low);
+        assert!(
+            (t_low - 0.5 * 0.5f64.sqrt()).abs() < 1e-12,
+            "below grid: {}",
+            t_low
+        );
 
         // At zero
         let t_zero = interpolate_transmission(&tc, 0.0, 0, 1);
         assert!(t_zero.abs() < 1e-15);
+    }
+
+    /// Fe-56 + n with Fe-56-like neutron T_lj (T_l ∝ E^(l+1/2) at low energy), gamma +
+    /// neutron exit channels, neutron emission to the 0+ ground state, the 2+ level at
+    /// 0.847 MeV and a CT continuum above 1.0 MeV.
+    fn fe56_like_results(energies: Vec<f64>, wfc_model: WfcModel) -> Vec<HfResult> {
+        fn neutron_tc(energies: Vec<f64>) -> TransmissionCoeffs {
+            let grid = EnergyGrid::from_values(energies).unwrap();
+            let n_e = grid.len();
+            let l_max = 4_u32;
+            let mut data = vec![0.0; (l_max as usize + 1) * 2 * n_e];
+            for l in 0..=l_max as usize {
+                for j_idx in 0..2 {
+                    if l == 0 && j_idx == 0 {
+                        continue;
+                    }
+                    for (e_idx, &e) in grid.as_slice().iter().enumerate() {
+                        let x = (e / 1.5_f64).powf(l as f64 + 0.5);
+                        // s wave: T_0 ~ 0.03 at 1 keV.
+                        data[l * 2 * n_e + j_idx * n_e + e_idx] = 0.95 * x / (1.0 + x);
+                    }
+                }
+            }
+            TransmissionCoeffs {
+                energy: grid,
+                l_max,
+                data,
+            }
+        }
+        let q = 7.646;
+        let entrance = Channel {
+            projectile: Projectile::Neutron,
+            target: Nuclide::new(26, 56).unwrap(),
+            q_value: q,
+        };
+        let exit_channel = Channel {
+            q_value: 0.0,
+            ..entrance.clone()
+        };
+        let tc = neutron_tc(energies);
+        let exit_grid: Vec<f64> = (0..60).map(|i| 1e-4 * 1.2_f64.powi(i)).collect();
+        let tc_exit = neutron_tc(exit_grid);
+        let nld_cn = ConstantTemperature {
+            temperature: 0.88,
+            e0: 1.94,
+            a: 6.21,
+        };
+        let nld_fe56 = ConstantTemperature {
+            temperature: 1.0,
+            e0: 1.0 - 2f64.ln(),
+            a: 6.0,
+        };
+        let fe56_levels = DiscreteLevels {
+            levels: vec![
+                DiscreteLevelInfo {
+                    energy: 0.0,
+                    spin: 0.0,
+                    parity: Parity::Positive,
+                },
+                DiscreteLevelInfo {
+                    energy: 0.846778,
+                    spin: 2.0,
+                    parity: Parity::Positive,
+                },
+            ],
+            e_complete: 1.0,
+        };
+        let gsf = StandardLorentzian {
+            e_gdr: 16.36,
+            gamma_gdr: 4.58,
+            sigma_gdr: 136.0,
+            m1_params: None,
+        };
+        let config = HfConfig {
+            two_j_max: 21,
+            wfc_model,
+            exit_channels: vec![Projectile::Gamma, Projectile::Neutron],
+            ..HfConfig::default()
+        };
+        let calc = HfCalculation {
+            entrance: &entrance,
+            tc_entrance: &tc,
+            exit_particle_channels: vec![ExitChannelData {
+                channel: &exit_channel,
+                tc: &tc_exit,
+                separation_energy: Some(q),
+                daughter_nld: Some(&nld_fe56),
+                daughter_nuclide: Some(exit_channel.target),
+                daughter_discrete: Some(&fe56_levels),
+            }],
+            nld: &nld_cn,
+            gsf: &gsf,
+            config: &config,
+            discrete_levels: None,
+        };
+        hauser_feshbach(&calc).unwrap()
+    }
+
+    #[test]
+    fn compound_elastic_kept_below_10_kev() {
+        // Regression: emission energies below 10 keV were dropped, which removed compound
+        // elastic for E < 10 keV and gave sigma_gamma = sigma_CN.
+        let energies = vec![0.001, 0.005, 0.02];
+        for wfc in [WfcModel::None, WfcModel::Moldauer] {
+            let r = fe56_like_results(energies.clone(), wfc);
+            for (res, e) in r.iter().zip(&energies) {
+                let (sigma_g, sigma_n) = (res.sigma_channels[0], res.sigma_channels[1]);
+                assert!(
+                    sigma_g < 0.05 * res.sigma_cn,
+                    "{wfc:?} E={e}: sigma_g = {sigma_g} mb, sigma_CN = {} mb",
+                    res.sigma_cn
+                );
+                assert!(
+                    sigma_n > 0.95 * res.sigma_cn,
+                    "{wfc:?} E={e}: sigma_n = {sigma_n}"
+                );
+            }
+            // 1/v-like capture: sigma_g * sqrt(E) roughly constant at keV energies.
+            let ratio = r[0].sigma_channels[0] * 0.001f64.sqrt()
+                / (r[2].sigma_channels[0] * 0.02f64.sqrt());
+            assert!((0.5..2.0).contains(&ratio), "{wfc:?}: 1/v ratio {ratio}");
+        }
+    }
+
+    #[test]
+    fn exit_channels_conserve_flux() {
+        // sigma_gamma + sigma_n = sigma_CN, with and without width fluctuations, from the
+        // elastic-only region through inelastic and continuum emission.
+        let energies = vec![0.001, 0.1, 0.9, 2.0, 5.0];
+        for wfc in [WfcModel::None, WfcModel::Moldauer] {
+            for (res, e) in fe56_like_results(energies.clone(), wfc)
+                .iter()
+                .zip(&energies)
+            {
+                let sum: f64 = res.sigma_channels.iter().sum();
+                assert!(
+                    (sum / res.sigma_cn - 1.0).abs() < 1e-6,
+                    "{wfc:?} E={e}: sum of partials {sum} vs sigma_CN {}",
+                    res.sigma_cn
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn moldauer_wfc_enhances_compound_elastic() {
+        let energies = vec![0.001, 0.1, 0.5];
+        let plain = fe56_like_results(energies.clone(), WfcModel::None);
+        let wfc = fe56_like_results(energies.clone(), WfcModel::Moldauer);
+        for ((p, w), e) in plain.iter().zip(&wfc).zip(&energies) {
+            assert_eq!(p.sigma_cn, w.sigma_cn);
+            // Elastic enhanced, competing gamma channel depleted.
+            assert!(
+                w.sigma_channels[1] > p.sigma_channels[1],
+                "E={e}: sigma_n {} (WFC) <= {} (none)",
+                w.sigma_channels[1],
+                p.sigma_channels[1]
+            );
+            let depletion = w.sigma_channels[0] / p.sigma_channels[0];
+            assert!(
+                depletion < 0.99 && depletion > 0.3,
+                "E={e}: sigma_g WFC/none = {depletion}"
+            );
+        }
+    }
+
+    #[test]
+    fn moldauer_wfc_with_entrance_only_in_denominator() {
+        // Gamma-only exit list: the entrance channel competes as a resolved channel;
+        // W_aa enhancement of the (unlisted) elastic channel lowers sigma_gamma.
+        let entrance = Channel {
+            projectile: Projectile::Neutron,
+            target: Nuclide::new(26, 56).unwrap(),
+            q_value: 7.646,
+        };
+        let tc = TransmissionCoeffs {
+            energy: EnergyGrid::from_values(vec![0.01]).unwrap(),
+            l_max: 1,
+            data: vec![0.0, 0.1, 0.002, 0.004],
+        };
+        let nld = ConstantTemperature {
+            temperature: 0.88,
+            e0: 1.94,
+            a: 6.21,
+        };
+        let gsf = StandardLorentzian {
+            e_gdr: 16.36,
+            gamma_gdr: 4.58,
+            sigma_gdr: 136.0,
+            m1_params: None,
+        };
+        let run = |wfc_model| {
+            let config = HfConfig {
+                two_j_max: 7,
+                wfc_model,
+                exit_channels: vec![Projectile::Gamma],
+                ..HfConfig::default()
+            };
+            let calc = HfCalculation {
+                entrance: &entrance,
+                tc_entrance: &tc,
+                exit_particle_channels: vec![],
+                nld: &nld,
+                gsf: &gsf,
+                config: &config,
+                discrete_levels: None,
+            };
+            hauser_feshbach(&calc).unwrap()[0].sigma_channels[0]
+        };
+        let (plain, wfc) = (run(WfcModel::None), run(WfcModel::Moldauer));
+        assert!(
+            wfc < plain && wfc > 0.3 * plain,
+            "WFC {wfc} vs none {plain}"
+        );
+    }
+
+    #[test]
+    fn goe_wfc_model_is_rejected() {
+        let entrance = Channel {
+            projectile: Projectile::Neutron,
+            target: Nuclide::new(26, 56).unwrap(),
+            q_value: 7.646,
+        };
+        let tc = TransmissionCoeffs {
+            energy: EnergyGrid::from_values(vec![1.0]).unwrap(),
+            l_max: 0,
+            data: vec![0.0, 0.5],
+        };
+        let nld = ConstantTemperature {
+            temperature: 0.88,
+            e0: 1.94,
+            a: 6.21,
+        };
+        let gsf = StandardLorentzian {
+            e_gdr: 16.36,
+            gamma_gdr: 4.58,
+            sigma_gdr: 136.0,
+            m1_params: None,
+        };
+        let config = HfConfig {
+            wfc_model: WfcModel::Goe,
+            exit_channels: vec![Projectile::Gamma],
+            ..HfConfig::default()
+        };
+        let calc = HfCalculation {
+            entrance: &entrance,
+            tc_entrance: &tc,
+            exit_particle_channels: vec![],
+            nld: &nld,
+            gsf: &gsf,
+            config: &config,
+            discrete_levels: None,
+        };
+        assert!(hauser_feshbach(&calc).is_err());
+    }
+
+    #[test]
+    fn discrete_emission_below_10_kev_included() {
+        // Emission to discrete levels at ε = 1 keV (ground state) and ε = 3 keV (2+ level)
+        // must be counted: no low-energy emission cutoff.
+        let grid = EnergyGrid::from_values(vec![1e-4, 1e-3, 1e-2, 1.0]).unwrap();
+        let n_e = grid.len();
+        let mut data = vec![0.0; 3 * 2 * n_e];
+        for (l, t_l) in [
+            (0_usize, [0.003, 0.03, 0.1, 0.9]),
+            (2, [1e-9, 1e-6, 1e-4, 0.3]),
+        ] {
+            for j_idx in 0..2 {
+                if l > 0 || j_idx == 1 {
+                    data[l * 2 * n_e + j_idx * n_e..][..n_e].copy_from_slice(&t_l);
+                }
+            }
+        }
+        let tc = TransmissionCoeffs {
+            energy: grid,
+            l_max: 2,
+            data,
+        };
+        let channel = Channel {
+            projectile: Projectile::Neutron,
+            target: Nuclide::new(26, 56).unwrap(),
+            q_value: 0.0,
+        };
+        let nld = ConstantTemperature {
+            temperature: 1.0,
+            e0: -0.5,
+            a: 6.0,
+        };
+        let levels = DiscreteLevels {
+            levels: vec![
+                DiscreteLevelInfo {
+                    energy: 0.0,
+                    spin: 0.0,
+                    parity: Parity::Positive,
+                },
+                DiscreteLevelInfo {
+                    energy: 0.0002,
+                    spin: 2.0,
+                    parity: Parity::Positive,
+                },
+            ],
+            e_complete: 0.0002,
+        };
+        let ecd = ExitChannelData {
+            channel: &channel,
+            tc: &tc,
+            separation_energy: Some(7.646),
+            daughter_nld: Some(&nld),
+            daughter_nuclide: Some(channel.target),
+            daughter_discrete: Some(&levels),
+        };
+        // J = 1/2+: s1/2 to the 0+ ground state (ε = 1 keV); d3/2 and d5/2 to the 2+ level.
+        let mut group = ChannelGroup::default();
+        exit_particle_continuum_transmission(
+            &ecd,
+            7.646 + 0.001,
+            1,
+            Parity::Positive,
+            false,
+            &mut group,
+        );
+        assert_eq!(group.resolved.len(), 3, "{group:?}");
+        assert!((group.resolved[0] - 0.03).abs() < 1e-12, "{group:?}");
+        assert!(
+            group.resolved[1] > 0.0 && group.resolved[1] < 1e-6,
+            "{group:?}"
+        );
+        assert!(group.lumped > 0.0, "continuum above 0.2 keV: {group:?}");
+        // skip_ground_state leaves only the 2+ level.
+        let mut group = ChannelGroup::default();
+        exit_particle_continuum_transmission(
+            &ecd,
+            7.646 + 0.001,
+            1,
+            Parity::Positive,
+            true,
+            &mut group,
+        );
+        assert_eq!(group.resolved.len(), 2, "{group:?}");
     }
 }

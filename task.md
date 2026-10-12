@@ -163,6 +163,7 @@
 - [x] **T-2B.8** Moldauer WFC 1次元積分（§7.3.1: $W_{ab}$ 補正因子、弾性散乱増強）
 - [x] **T-2B.9** Kawano-Talou $\nu_a$ パラメータ化（§7.3.2: GOE 最良フィット）
 - [x] **T-2B.10** GOE 三重積分（§7.3.4: VWZ 公式、`goe_wfc()` Gauss-Laguerre/Legendre 求積）
+  - 注: `goe_wfc()` は未検証（フラックス保存を満たさない）。`hauser_feshbach` は `WfcModel::Goe` をエラーとして拒否する。
 
 #### NLD/GSF モデル
 
@@ -175,7 +176,8 @@
 - [ ] **T-2B.14** ⁵⁶Fe(n,γ) HF 断面積の TALYS 比較（ACC-03: 相対誤差 < 10⁻⁶, ゴールデンファイル `tests/reference_data/talys/fe56/fe56_cross_sections.dat`）
   - テスト実装済み: `crates/nucrust/tests/golden_talys.rs`（回帰ラチェット + `#[ignore]` の 10⁻⁶ 受け入れテスト）。**未達**。
   - σ_R（vs `sigma_reac`）: 最大 2.5%（E_cm=0.88 MeV）/ 中央値 1.7%（既定設定の T_lj 誤差がそのまま伝播。T-2A.13 の修正前は最大 4.2%）。
-  - σ(n,γ)（vs `sigma_res`）: 最大 501 倍（E_cm<10 keV: 中性子出口チャネルが `MIN_EMISSION_ENERGY` で複合弾性を落とし σ_γ=σ_CN になる）、10 keV 以上で 0.6〜0.7（低め）〜最大 10.9（19.6 MeV, 競合チャネル欠如）。NLD/GSF/WFC/競合チャネルのモデル差あり。
+  - σ(n,γ)（vs `sigma_res`）: 最大 10.8 倍（19.6 MeV, 競合チャネル・前平衡の欠如）/ 中央値 0.63。2 MeV 未満では最大 0.72（1 keV で nucrust が約 3.5 分の 1, 主に GSF の差）。NLD/GSF/競合チャネルのモデル差あり（TALYS の NLD/PSF パラメータは出力に無い）。
+  - 修正済み: 10 keV 未満の放出エネルギー切り捨てによる複合弾性の消失（以前は最大 495 倍）、Moldauer WFC を `hauser_feshbach` に組み込み。
 - [x] **T-2B.15** proptest: 断面積 ≥ 0、ランダムエネルギーで検証
 
 ### 2C. nucrust-rmatrix（§8）

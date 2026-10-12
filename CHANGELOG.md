@@ -78,6 +78,27 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the γ final states in 0 ≤ U < E0; Fe-56 σ(n,γ) rises by 20–27 % between
   10 keV and 1 MeV
 
+### Fixed
+- Hauser-Feshbach particle emission no longer drops emission energies below
+  10 keV: compound elastic (and inelastic decay to discrete levels just above
+  threshold) is kept at all energies. Below ~10 keV σ(n,γ) was previously
+  equal to σ_CN (Fe-56: ~500× too large)
+- Moldauer width fluctuation factors: the integrand multiplied instead of
+  divided by F_a F_b and lacked the Laguerre weight, so flux was not conserved.
+  Now uses Moldauer (1980) ν_c and a transformed Gauss-Legendre rule
+  (`wfc_quadrature`, default 40)
+
+### Changed
+- `hauser_feshbach` applies `HfConfig::wfc_model`: Moldauer WFC (the default)
+  is now included in the summation, with gamma rays and particle continua as
+  lumped weak channels; `WfcModel::Goe` is rejected (unvalidated). The CPU
+  backend forwards `wfc_model` from `nucrust_core::backend::HfConfig`
+- The GPU backend's `hf_summation` returns an error unless
+  `wfc_model == WfcModel::None` (the GPU kernel has no width fluctuation
+  correction), instead of silently ignoring it
+- Particle transmission coefficients below the first grid energy are
+  extrapolated as T_l ∝ ε^(l+1/2) instead of held constant
+
 ## [0.1.0] - 2026-10-07
 
 ### Added

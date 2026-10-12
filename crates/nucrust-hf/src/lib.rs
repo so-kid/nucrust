@@ -16,7 +16,8 @@ pub mod wfc;
 /// are treated as zero.
 pub(crate) const NUMERICAL_FLOOR: f64 = 1e-30;
 
-/// Minimum emitted particle / gamma energy (MeV) considered in summations.
+/// Minimum gamma-ray energy (MeV) for transitions to discrete levels in the gamma
+/// transmission sum. Particle emission has no such cutoff (see `hf`).
 pub(crate) const MIN_EMISSION_ENERGY: f64 = 0.01;
 
 /// Minimum excitation energy (MeV) for statistical gamma decay treatment.
@@ -25,4 +26,7 @@ pub(crate) const MIN_EXCITATION: f64 = 0.1;
 pub use gsf::{EnhancedGeneralizedLorentzian, QrpaTableInterp, StandardLorentzian};
 pub use hf::{hauser_feshbach, DiscreteLevelInfo, DiscreteLevels, HfCalculation};
 pub use nld::{BackShiftedFermiGas, ConstantTemperature, GilbertCameron, HfbTableInterp, Ignatyuk};
-pub use wfc::{goe_wfc, moldauer_wfc, GoeResult, MoldauerResult};
+pub use wfc::{
+    goe_wfc, moldauer_nu, moldauer_w_row, moldauer_wfc, GoeResult, MoldauerQuadrature,
+    MoldauerResult,
+};

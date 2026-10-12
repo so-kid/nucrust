@@ -1,6 +1,7 @@
 //! Width fluctuation correction (WFC) implementations.
 //!
-//! Moldauer form with Kawano-Talou parameterization of the GOE degrees of freedom.
+//! Moldauer form (Moldauer 1980 degrees of freedom), used by
+//! [`hauser_feshbach`](crate::hf::hauser_feshbach), and an experimental GOE routine.
 
 use crate::NUMERICAL_FLOOR;
 
@@ -28,59 +29,141 @@ pub fn kawano_talou_nu(t_a: f64, t_total: f64) -> f64 {
     nu.clamp(1.0, 2.0) // nu should be between 1 (Porter-Thomas) and 2 (GOE)
 }
 
-/// Compute Moldauer WFC factors for given channel transmission coefficients.
+/// Moldauer (1980) effective number of degrees of freedom of the width distribution
+/// of channel a (the form used by TALYS):
 ///
-/// W_ab = (1 + 2*delta_ab/nu_a) * integral_0^inf dt prod_k F_k(t)^{-nu_k/2} * F_a(t) * F_b(t)
+/// nu_a = 1.78 + (T_a^1.212 - 0.78) * exp(-0.228 * T_total)
 ///
-/// where F_k(t) = 1 + (2/nu_k) * (T_k / T_total) * t
-///
-/// Uses Gauss-Laguerre quadrature with n_points.
-pub fn moldauer_wfc(transmissions: &[f64], n_quadrature: usize) -> MoldauerResult {
-    let n_ch = transmissions.len();
-    let t_total: f64 = transmissions.iter().sum();
+/// It tends to 1 (Porter-Thomas) for weak channels in few-channel situations.
+pub fn moldauer_nu(t_a: f64, t_total: f64) -> f64 {
+    1.78 + (t_a.max(0.0).powf(1.212) - 0.78) * (-0.228 * t_total).exp()
+}
 
-    if t_total < NUMERICAL_FLOOR || n_ch == 0 {
-        return MoldauerResult {
-            w_factors: vec![vec![1.0; n_ch]; n_ch],
-        };
+/// Quadrature rule for the Moldauer integral over x in [0, inf).
+///
+/// Gauss-Legendre on t in (0, 1) with x = (t / (1 - t))^2. The integrand falls off at
+/// least like x^(-5/2) (exponent sum nu_c/2 + 2 with nu_c >= 1) or exponentially when
+/// many channels are open; in t it is smooth at both ends, so a few tens of points give
+/// ~1e-6 relative accuracy (checked by the flux-conservation tests).
+#[derive(Debug, Clone)]
+pub struct MoldauerQuadrature {
+    x: Vec<f64>,
+    w: Vec<f64>,
+}
+
+impl MoldauerQuadrature {
+    /// Build an `n`-point rule (n >= 1).
+    pub fn new(n: usize) -> Self {
+        let (nodes, weights) = gauss_legendre(n.max(1));
+        let mut x = Vec::with_capacity(nodes.len());
+        let mut w = Vec::with_capacity(nodes.len());
+        for (&u, &wu) in nodes.iter().zip(&weights) {
+            // u in (-1, 1) -> t in (0, 1) -> s = t/(1-t) -> x = s^2.
+            let t = 0.5 * (u + 1.0);
+            let s = t / (1.0 - t);
+            // dx = 2 s ds, ds = dt / (1-t)^2, dt = du / 2.
+            x.push(s * s);
+            w.push(wu * 0.5 * 2.0 * s / ((1.0 - t) * (1.0 - t)));
+        }
+        Self { x, w }
     }
+}
 
-    // Compute nu_a for each channel
-    let nus: Vec<f64> = transmissions
+/// One row of Moldauer width fluctuation factors, for entrance channel `a`.
+///
+/// Channels are given as individually resolved transmissions `t` plus a lumped
+/// transmission `t_lumped` standing for many weak channels (gamma rays, continuum bins),
+/// each with T_c << 1, whose product (1 + 2 T_c x / (nu_c T))^(-nu_c/2) tends to
+/// exp(-T_lumped x / T) independently of nu_c. With T = sum(t) + t_lumped:
+///
+/// W_ab = (1 + 2 delta_ab / nu_a) * int_0^inf dx exp(-T_lumped x / T)
+///        * prod_c (1 + 2 T_c x / (nu_c T))^(-nu_c/2 - delta_ac - delta_bc)
+///
+/// Returns (W_ab for every resolved b, W_a,lumped). The factors conserve flux:
+/// sum_b T_b W_ab + T_lumped W_a,lumped = T (to quadrature accuracy).
+pub fn moldauer_w_row(
+    t: &[f64],
+    t_lumped: f64,
+    a: usize,
+    quad: &MoldauerQuadrature,
+) -> (Vec<f64>, f64) {
+    let n_ch = t.len();
+    let t_total: f64 = t.iter().sum::<f64>() + t_lumped;
+    if t_total < NUMERICAL_FLOOR {
+        return (vec![1.0; n_ch], 1.0);
+    }
+    let nus: Vec<f64> = t.iter().map(|&tc| moldauer_nu(tc, t_total)).collect();
+    // F_c(x) = 1 + coef_c * x
+    let coef: Vec<f64> = t
         .iter()
-        .map(|&t_a| kawano_talou_nu(t_a, t_total))
+        .zip(&nus)
+        .map(|(&tc, &nu)| 2.0 * tc / (nu * t_total))
         .collect();
 
-    // Gauss-Laguerre quadrature nodes and weights
-    let (nodes, weights) = gauss_laguerre_nodes(n_quadrature);
-
-    let mut w_factors = vec![vec![0.0; n_ch]; n_ch];
-
-    for (q, (&t, &w)) in nodes.iter().zip(weights.iter()).enumerate() {
-        let _ = q;
-        // Compute product: prod_k F_k(t)^{-nu_k/2}
-        let mut log_prod = 0.0;
-        for k in 0..n_ch {
-            let f_k = 1.0 + (2.0 / nus[k]) * (transmissions[k] / t_total) * t;
-            log_prod -= (nus[k] / 2.0) * f_k.ln();
+    let mut row = vec![0.0; n_ch];
+    let mut lumped = 0.0;
+    let mut f = vec![0.0; n_ch];
+    for (&x, &w) in quad.x.iter().zip(&quad.w) {
+        let mut log_prod = -t_lumped * x / t_total;
+        for c in 0..n_ch {
+            f[c] = 1.0 + coef[c] * x;
+            log_prod -= 0.5 * nus[c] * f[c].ln();
         }
-        let prod = log_prod.exp();
+        let base = w * log_prod.exp() / f[a];
+        if base == 0.0 {
+            continue;
+        }
+        for (r, &fb) in row.iter_mut().zip(&f) {
+            *r += base / fb;
+        }
+        lumped += base;
+    }
+    row[a] *= 1.0 + 2.0 / nus[a];
+    (row, lumped)
+}
 
-        for a in 0..n_ch {
-            let f_a = 1.0 + (2.0 / nus[a]) * (transmissions[a] / t_total) * t;
-            for b in 0..n_ch {
-                let f_b = 1.0 + (2.0 / nus[b]) * (transmissions[b] / t_total) * t;
-                w_factors[a][b] += w * prod * f_a * f_b;
+/// Compute Moldauer WFC factors for given channel transmission coefficients.
+///
+/// W_ab = (1 + 2 delta_ab / nu_a) * int_0^inf dx prod_c (1 + 2 T_c x / (nu_c T))^(-nu_c/2 - delta_ac - delta_bc)
+///
+/// with the Moldauer (1980) nu_c ([`moldauer_nu`]) and an `n_quadrature`-point rule
+/// ([`MoldauerQuadrature`]).
+pub fn moldauer_wfc(transmissions: &[f64], n_quadrature: usize) -> MoldauerResult {
+    let quad = MoldauerQuadrature::new(n_quadrature);
+    let w_factors = (0..transmissions.len())
+        .map(|a| moldauer_w_row(transmissions, 0.0, a, &quad).0)
+        .collect();
+    MoldauerResult { w_factors }
+}
+
+/// Gauss-Legendre nodes and weights on [-1, 1] (Newton iteration on P_n).
+fn gauss_legendre(n: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut nodes = vec![0.0; n];
+    let mut weights = vec![0.0; n];
+    for i in 0..n.div_ceil(2) {
+        let mut x = (std::f64::consts::PI * (i as f64 + 0.75) / (n as f64 + 0.5)).cos();
+        let mut dp = 1.0;
+        for _ in 0..100 {
+            let (mut p0, mut p1) = (1.0, x);
+            for k in 2..=n {
+                let p2 = ((2 * k - 1) as f64 * x * p1 - (k - 1) as f64 * p0) / k as f64;
+                p0 = p1;
+                p1 = p2;
+            }
+            dp = n as f64 * (x * p1 - p0) / (x * x - 1.0);
+            let dx = p1 / dp;
+            x -= dx;
+            if dx.abs() < 1e-15 {
+                break;
             }
         }
+        let w = 2.0 / ((1.0 - x * x) * dp * dp);
+        nodes[i] = x;
+        nodes[n - 1 - i] = -x;
+        weights[i] = w;
+        weights[n - 1 - i] = w;
     }
-
-    // Apply elastic enhancement factor: (1 + 2*delta_ab/nu_a)
-    for a in 0..n_ch {
-        w_factors[a][a] *= 1.0 + 2.0 / nus[a];
-    }
-
-    MoldauerResult { w_factors }
+    (nodes, weights)
 }
 
 /// Simple Gauss-Laguerre quadrature nodes and weights.
@@ -129,6 +212,10 @@ pub struct GoeResult {
 /// where G_c(lambda_1, lambda_2, mu) involves the channel transmission coefficients.
 ///
 /// Uses Gauss-Laguerre quadrature for lambda integrals and Gauss-Legendre for mu.
+///
+/// **Experimental**: the kernel and normalization have not been validated against the
+/// VWZ reference results (the factors do not conserve flux), and
+/// [`hauser_feshbach`](crate::hf::hauser_feshbach) rejects `WfcModel::Goe`.
 pub fn goe_wfc(transmissions: &[f64], n_quad_laguerre: usize, n_quad_legendre: usize) -> GoeResult {
     let n_ch = transmissions.len();
     let t_total: f64 = transmissions.iter().sum();
@@ -341,6 +428,85 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// sum_b T_b W_ab + T_lumped W_a,lumped = T_total for every entrance channel a.
+    fn assert_flux_conserved(t: &[f64], t_lumped: f64, n_quad: usize, tol: f64) {
+        let quad = MoldauerQuadrature::new(n_quad);
+        let t_total: f64 = t.iter().sum::<f64>() + t_lumped;
+        for a in 0..t.len() {
+            let (row, w_l) = moldauer_w_row(t, t_lumped, a, &quad);
+            let flux: f64 = t.iter().zip(&row).map(|(tb, w)| tb * w).sum::<f64>() + t_lumped * w_l;
+            assert!(
+                (flux / t_total - 1.0).abs() < tol,
+                "t={t:?} lumped={t_lumped} a={a}: sum T_b W_ab = {flux}, T = {t_total}"
+            );
+        }
+    }
+
+    #[test]
+    fn moldauer_conserves_flux() {
+        let cases: [(&[f64], f64); 6] = [
+            (&[0.3, 0.3, 0.4], 0.0),
+            (&[0.9], 1e-4),
+            (&[0.99, 0.5], 0.0),
+            (&[0.05, 0.02, 0.6, 0.6, 0.6, 0.3], 0.01),
+            (&[1e-3, 1e-5], 2e-3),
+            (&[0.5; 20], 3.0),
+        ];
+        for (t, t_lumped) in cases {
+            assert_flux_conserved(t, t_lumped, 40, 1e-6);
+        }
+    }
+
+    #[test]
+    fn moldauer_quadrature_converged() {
+        let t = [0.9, 0.2, 0.05];
+        let reference = moldauer_w_row(&t, 1e-3, 0, &MoldauerQuadrature::new(400));
+        let row = moldauer_w_row(&t, 1e-3, 0, &MoldauerQuadrature::new(40));
+        for (w, w_ref) in row.0.iter().zip(&reference.0) {
+            assert!((w / w_ref - 1.0).abs() < 1e-7, "{w} vs {w_ref}");
+        }
+        assert!((row.1 / reference.1 - 1.0).abs() < 1e-7);
+    }
+
+    #[test]
+    fn moldauer_lumped_equals_many_weak_channels() {
+        // 2000 channels of T = 5e-4 behave like one lumped T = 1.
+        let strong = [0.6, 0.3];
+        let mut many = strong.to_vec();
+        many.extend_from_slice(&[5e-4; 2000]);
+        let quad = MoldauerQuadrature::new(40);
+        let (row_many, _) = moldauer_w_row(&many, 0.0, 0, &quad);
+        let (row_lumped, w_l) = moldauer_w_row(&strong, 1.0, 0, &quad);
+        for b in 0..2 {
+            assert!(
+                (row_many[b] / row_lumped[b] - 1.0).abs() < 1e-3,
+                "W_0{b}: {} vs {}",
+                row_many[b],
+                row_lumped[b]
+            );
+        }
+        assert!((row_many[2] / w_l - 1.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn moldauer_two_channel_limits() {
+        // Weak entrance + dominant lumped channel: W -> 1 off-diagonal, and the elastic
+        // enhancement W_aa -> 1 + 2/nu_a with nu_a -> 1 (Porter-Thomas): 3.
+        let quad = MoldauerQuadrature::new(40);
+        let (row, w_l) = moldauer_w_row(&[1e-6], 50.0, 0, &quad);
+        assert!((w_l - 1.0).abs() < 1e-5, "W_a,lumped = {w_l}");
+        let nu = moldauer_nu(1e-6, 50.0);
+        assert!(
+            (row[0] - (1.0 + 2.0 / nu)).abs() < 1e-4,
+            "W_aa = {}",
+            row[0]
+        );
+        assert!((nu - 1.78).abs() < 1e-3, "nu = {nu}");
+        // Few channels: elastic enhanced, other channels depleted.
+        let (row, _) = moldauer_w_row(&[0.5, 0.5], 0.0, 0, &quad);
+        assert!(row[0] > 1.0 && row[1] < 1.0, "{row:?}");
     }
 
     #[test]

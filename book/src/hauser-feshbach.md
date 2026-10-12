@@ -53,18 +53,27 @@ for r in &results {
 |-------|---------|-------------|
 | `two_j_max` | `60` | Maximum total angular momentum, in units of 2J (J_max = 30) |
 | `wfc_model` | `Moldauer` | Width fluctuation correction model |
-| `wfc_quadrature` | `8` | Quadrature points for WFC integration |
+| `wfc_quadrature` | `40` | Quadrature points for the Moldauer WFC integral |
 | `exit_channels` | n, p, α, γ | Exit channels to include |
 
 ## Width Fluctuation Corrections
 
-WFC accounts for correlations between entrance and exit channels. Three models are available:
+WFC accounts for correlations between entrance and exit channels (most visibly the
+enhancement of compound elastic scattering). Set via `HfConfig::wfc_model`:
 
-- **Moldauer** — 1D numerical integration (fast, good approximation)
-- **GOE** — VWZ triple integral (exact, slower)
-- **None** — No correction (Weisskopf-Ewing limit)
+- **Moldauer** (default) — 1D integral with the Moldauer (1980) degrees of freedom
+  ν_c = 1.78 + (T_c^1.212 − 0.78) exp(−0.228 ΣT). Each (l, j) channel to a discrete
+  level is resolved individually; gamma rays and particle continua are treated as
+  lumped weak channels. The factors conserve flux (Σ partial cross sections = σ_CN).
+  The entrance channels must be identifiable among the exit channels: when a
+  particle exit channel of the entrance type is included, its daughter discrete
+  levels must contain the target ground state; otherwise W = 1 is used.
+- **None** — no correction (pure Hauser-Feshbach).
+- **GOE** — `goe_wfc()` exists as an experimental, unvalidated routine;
+  `hauser_feshbach` returns an error for `WfcModel::Goe`.
 
-Set via `HfConfig::wfc_model`.
+Particle emission includes all open final states down to zero emission energy, so
+compound elastic scattering is kept at keV incident energies.
 
 ## Multi-particle Cascade
 
